@@ -16,7 +16,7 @@ fn main() {
         .expect("Unable to generate bindings");
 
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
-    let target = &out_path.join("bindings.rs");
+    let target = &out_path.join("raw_bindings.rs");
     bindings
         .write_to_file(target)
         .expect("Couldn't write bindings!");
@@ -25,7 +25,7 @@ fn main() {
     let mut st = fs::read_to_string(target).expect("Couldn't update bindings!");
     st = st.replace(
         "unsafe extern \"C\" {",
-        "#[cfg_attr(windows, link(name = \"fmod.dll\", kind = \"raw-dylib\"))]\nunsafe extern \"C\" {"
+        "#[cfg_attr(windows, link(name = \"fmod\", kind = \"raw-dylib\"))]\nunsafe extern \"C\" {"
     );
     fs::write(target, st).expect("Couldn't update bindings!");
 }

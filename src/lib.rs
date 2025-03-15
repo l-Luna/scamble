@@ -1,23 +1,26 @@
-use crate::bindings::FMOD_RESULT::FMOD_OK;
-use crate::bindings::{
+use crate::raw_bindings::FMOD_RESULT::FMOD_OK;
+use crate::raw_bindings::{
     FMOD_BOOL, FMOD_CHANNELMASK, FMOD_DSP_BUFFER_ARRAY, FMOD_DSP_DESCRIPTION,
     FMOD_DSP_PROCESS_OPERATION, FMOD_DSP_STATE, FMOD_PLUGIN_SDK_VERSION, FMOD_RESULT,
     FMOD_SPEAKERMODE,
 };
-use rand::{Rng, rng};
 use std::ptr;
 use std::slice::from_raw_parts_mut;
 
-pub mod bindings;
+pub mod fmod;
+pub mod raw_bindings;
 
-static mut DESC: FMOD_DSP_DESCRIPTION = FMOD_DSP_DESCRIPTION {
+#[cfg(test)]
+mod simulate;
+
+const DESC: FMOD_DSP_DESCRIPTION = FMOD_DSP_DESCRIPTION {
     pluginsdkversion: FMOD_PLUGIN_SDK_VERSION,
     name: [
-        b'S' as i8, b'c' as i8, 'a' as i8, 'm' as i8, 'b' as i8, 'l' as i8, 'e' as i8,
+        b'S' as i8, b'c' as i8, 'a' as i8, 'm' as i8, 'b' as i8, 'l' as i8, 'e' as i8, '\0' as i8,
         '\0' as i8, '\0' as i8, '\0' as i8, '\0' as i8, '\0' as i8, '\0' as i8, '\0' as i8,
         '\0' as i8, '\0' as i8, '\0' as i8, '\0' as i8, '\0' as i8, '\0' as i8, '\0' as i8,
         '\0' as i8, '\0' as i8, '\0' as i8, '\0' as i8, '\0' as i8, '\0' as i8, '\0' as i8,
-        '\0' as i8, '\0' as i8, '\0' as i8, '\0' as i8,
+        '\0' as i8, '\0' as i8, '\0' as i8,
     ],
     version: 1,
     numinputbuffers: 0,
@@ -45,9 +48,11 @@ static mut DESC: FMOD_DSP_DESCRIPTION = FMOD_DSP_DESCRIPTION {
     sys_mix: None,
 };
 
+static mut DESC_EXPORT: FMOD_DSP_DESCRIPTION = DESC;
+
 #[unsafe(no_mangle)]
-unsafe extern "stdcall" fn FMODGetDSPDescription() -> *mut FMOD_DSP_DESCRIPTION {
-    &raw mut DESC
+unsafe extern "stdcall" fn FMODGetDSPDescription() -> *const FMOD_DSP_DESCRIPTION {
+    &raw const DESC_EXPORT
 }
 
 extern "C" fn process(
@@ -60,15 +65,23 @@ extern "C" fn process(
 ) -> FMOD_RESULT {
     unsafe {
         if op == FMOD_DSP_PROCESS_OPERATION::FMOD_DSP_PROCESS_QUERY {
-            *(*outbufferarray).buffernumchannels = 1;
+            *(*outbufferarray).buffernumchannels = 2;
             FMOD_OK
         } else {
             let ulen = length as usize;
             let chann = ((*(*outbufferarray).buffernumchannels) as usize);
             let buf = from_raw_parts_mut(*(*outbufferarray).buffers, ulen * chann);
-            for i in 0..ulen * chann {
-                buf[i] = rng().random_range(0. ..1.);
-            }
+
+            let data = [0.; 128];
+
+            /*buf[0] = rng().random_range(0. ..1.);
+            buf[1] = rng().random_range(0. ..1.);
+            buf[2] = rng().random_range(0. ..1.);
+            buf[3] = rng().random_range(0. ..1.);
+            for i in 2..ulen{
+                buf[i*2] = (rng().random_range(0. ..1.) + buf[i*2 - 2] + buf[i*2 - 4]) / 3.;
+                buf[i*2+1] = buf[i*2];
+            }*/
             FMOD_OK
         }
     }
