@@ -1,4 +1,4 @@
-use crate::fmod::custom_dsp::{Dsp, DspType};
+use crate::custom_dsp::{Dsp, DspType};
 use rand::{Rng, rng};
 
 pub struct DySynth {

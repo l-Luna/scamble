@@ -3,8 +3,8 @@ use std::time::Duration;
 use fmod::system::System;
 use crate::{example, fmod};
 use crate::fmod::channel_group::ChannelGroup;
-use crate::fmod::custom_dsp;
-use crate::fmod::result::FmResultTrait;
+use crate::custom_dsp;
+use crate::result::FmResultTrait;
 
 #[test]
 fn simulate() {

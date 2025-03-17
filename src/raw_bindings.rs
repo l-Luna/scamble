@@ -2,7 +2,7 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
-use crate::fmod::result::{FmodError, FmodResult};
+use crate::result::{FmodError, FmodResult};
 use crate::raw_bindings::FMOD_RESULT::FMOD_OK;
 
 include!(concat!(env!("OUT_DIR"), "/raw_bindings.rs"));

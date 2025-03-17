@@ -1,10 +1,7 @@
+use std::ffi::c_uint;
 use crate::raw_bindings::FMOD_RESULT::{FMOD_ERR_DSP_DONTPROCESS, FMOD_ERR_DSP_SILENCE};
-use crate::raw_bindings::{
-    FMOD_BOOL, FMOD_CHANNELMASK, FMOD_DSP_BUFFER_ARRAY, FMOD_DSP_DESCRIPTION,
-    FMOD_DSP_PROCESS_OPERATION, FMOD_DSP_STATE, FMOD_PLUGIN_SDK_VERSION, FMOD_RESULT,
-    FMOD_RESULT::FMOD_OK, FMOD_SPEAKERMODE,
-};
-use std::ptr;
+use crate::raw_bindings::{FMOD_BOOL, FMOD_CHANNELMASK, FMOD_DSP_BUFFER_ARRAY, FMOD_DSP_DESCRIPTION, FMOD_DSP_PROCESS_OPERATION, FMOD_DSP_STATE, FMOD_MEMORY_NORMAL, FMOD_PLUGIN_SDK_VERSION, FMOD_RESULT, FMOD_RESULT::FMOD_OK, FMOD_SPEAKERMODE};
+use std::{mem, ptr};
 use std::ptr::{slice_from_raw_parts, slice_from_raw_parts_mut};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -49,6 +46,29 @@ pub trait Dsp {
 }
 
 // wrapping DSPs into FMOD's format
+
+#[macro_export]
+macro_rules! expose_dsp {
+    ($t:ty) => {
+        const _: () = {
+            use crate::custom_dsp;
+            use core::mem::MaybeUninit;
+            use crate::raw_bindings::FMOD_DSP_DESCRIPTION;
+
+            static mut DESC: MaybeUninit<FMOD_DSP_DESCRIPTION> = MaybeUninit::uninit();
+
+            #[allow(non_snake_case)]
+            #[unsafe(no_mangle)]
+            unsafe extern "stdcall" fn FMODGetDSPDescription() -> *const FMOD_DSP_DESCRIPTION {
+                unsafe {
+                    (*&raw mut DESC).write(custom_dsp::into_desc::<$t>())
+                }
+            }
+        };
+    };
+}
+
+pub(crate) use expose_dsp;
 
 pub fn into_desc<D: Dsp>() -> FMOD_DSP_DESCRIPTION {
     // name sanitization
@@ -96,17 +116,22 @@ pub fn into_desc<D: Dsp>() -> FMOD_DSP_DESCRIPTION {
     }
 }
 
+static dbgstr: &'static str = "Rust DSP\0";
+
 extern "C" fn create_callback<D: Dsp>(dsp_state: *mut FMOD_DSP_STATE) -> FMOD_RESULT {
-    let instance = Box::new(D::create());
+    let instance = D::create();
     unsafe {
-        (*dsp_state).instance = Box::leak(instance) as *mut _ as *mut _;
+        let mem = (*(*dsp_state).functions).alloc.unwrap()(size_of::<D>() as c_uint, FMOD_MEMORY_NORMAL, dbgstr.as_ptr() as *const _) as *mut D;
+        ptr::write(mem, instance);
     }
     FMOD_OK
 }
 
 extern "C" fn release_callback<D: Dsp>(dsp_state: *mut FMOD_DSP_STATE) -> FMOD_RESULT {
     unsafe {
-        drop(Box::<D>::from_raw((*dsp_state).instance as *mut _));
+        let x = (*dsp_state).instance;
+        drop(ptr::read(x as *mut D));
+        (*(*dsp_state).functions).free.unwrap()(x, FMOD_MEMORY_NORMAL, dbgstr.as_ptr() as *const _);
     }
     FMOD_OK
 }
@@ -177,7 +202,7 @@ extern "C" fn process_callback<D: Dsp>(
                 &*slice_from_raw_parts(*(*in_buffers).buffers, length as usize * in_chan),
                 &mut *slice_from_raw_parts_mut(*(*out_buffers).buffers, length as usize * out_chan),
                 in_chan,
-                out_chan
+                out_chan,
             );
             FMOD_OK
         }

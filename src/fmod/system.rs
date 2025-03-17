@@ -1,7 +1,7 @@
 use crate::fmod::channel::Channel;
 use crate::fmod::channel_group::ChannelGroup;
 use crate::fmod::dsp::DspInstance;
-use crate::fmod::result::*;
+use crate::result::*;
 use crate::raw_bindings::*;
 use std::ffi::CString;
 use std::ptr;

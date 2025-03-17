@@ -1,6 +1,8 @@
-pub mod result;
-pub mod system;
-pub mod channel_group;
+#[cfg(test)]
 pub mod channel;
+#[cfg(test)]
+pub mod channel_group;
+#[cfg(test)]
 pub mod dsp;
-pub mod custom_dsp;
+#[cfg(test)]
+pub mod system;
