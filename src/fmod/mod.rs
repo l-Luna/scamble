@@ -3,4 +3,4 @@ pub mod system;
 pub mod channel_group;
 pub mod channel;
 pub mod dsp;
-pub mod dsp_desc;
+pub mod custom_dsp;

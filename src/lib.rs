@@ -4,15 +4,16 @@ use crate::raw_bindings::{
     FMOD_DSP_PROCESS_OPERATION, FMOD_DSP_STATE, FMOD_PLUGIN_SDK_VERSION, FMOD_RESULT,
     FMOD_SPEAKERMODE,
 };
+use rand::{Rng, rng};
 use std::ptr;
 use std::slice::from_raw_parts_mut;
-use rand::{rng, Rng};
 
 pub mod fmod;
 pub mod raw_bindings;
 
 #[cfg(test)]
 mod simulate;
+mod example;
 
 const DESC: FMOD_DSP_DESCRIPTION = FMOD_DSP_DESCRIPTION {
     pluginsdkversion: FMOD_PLUGIN_SDK_VERSION,
@@ -51,6 +52,7 @@ const DESC: FMOD_DSP_DESCRIPTION = FMOD_DSP_DESCRIPTION {
 
 static mut DESC_EXPORT: FMOD_DSP_DESCRIPTION = DESC;
 
+#[allow(non_snake_case)] // exact name is required
 #[unsafe(no_mangle)]
 unsafe extern "stdcall" fn FMODGetDSPDescription() -> *const FMOD_DSP_DESCRIPTION {
     &raw const DESC_EXPORT
@@ -70,19 +72,44 @@ extern "C" fn process(
             FMOD_OK
         } else {
             let ulen = length as usize;
-            let chann = ((*(*outbufferarray).buffernumchannels) as usize);
-            let buf = from_raw_parts_mut(*(*outbufferarray).buffers, ulen * chann);
+            let chan = (*(*outbufferarray).buffernumchannels) as usize;
+            let buf = from_raw_parts_mut(*(*outbufferarray).buffers, ulen * chan);
 
-            // let data = [0.; 128];
+            // simple noise method
+            /*for i in 0..ulen {
+                buf[i*2] = rng().random_range(-0.5 .. 0.5);
+            }*/
 
-            buf[0] = rng().random_range(0. ..1.);
-            buf[1] = rng().random_range(0. ..1.);
-            buf[2] = rng().random_range(0. ..1.);
-            buf[3] = rng().random_range(0. ..1.);
-            for i in 2..ulen{
-                buf[i*2] = (rng().random_range(0. ..1.) + buf[i*2 - 2] + buf[i*2 - 4]) / 3.;
+            // continuous noise
+            buf[0] = rng().random_range(-0.5 .. 0.5);
+            for i in 1..ulen {
+                buf[i*2] = (buf[i*2 - 2] + rng().random_range(-0.05 .. 0.05)).clamp(0., 1.);
+            }
+
+            // low-pass
+            for _ in 0..2 {
+                for i in 1..ulen {
+                    buf[i * 2] = (buf[i * 2] + buf[i * 2 - 2]) / 2.;
+                }
+            }
+
+            // sync buffers
+            for i in 0..ulen {
                 buf[i*2+1] = buf[i*2];
             }
+
+            /*let prefix = 3;
+            for i in 0..(prefix * 2){
+                buf[i] = rng().random_range(0. ..1.);
+            }
+            for i in prefix..ulen{
+                buf[i*2] = rng().random_range(0. ..1.);
+                for j in 0..prefix{
+                    buf[i*2] += buf[i*2 - (j+1)*2];
+                }
+                buf[i*2] /= (prefix + 1) as f32;
+                buf[i*2+1] = buf[i*2];
+            }*/
             FMOD_OK
         }
     }
