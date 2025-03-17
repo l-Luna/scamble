@@ -13,11 +13,15 @@ impl System {
         let mut sys = ptr::null_mut();
         let result = unsafe { FMOD_System_Create(&mut sys, FMOD_VERSION) };
         let sys = result.ok_then(|| System(sys))?;
-        unsafe { FMOD_System_Init(sys.0, 10, 0, ptr::null_mut()) }.ok_then(|| sys)
+        unsafe { FMOD_System_Init(sys.0, 512, 0, ptr::null_mut()) }.ok_then(|| sys)
     }
 
     pub fn release(self) -> FmodResult<()> {
         unsafe { FMOD_System_Release(self.0) }.ok_then(|| ())
+    }
+
+    pub fn update(&self) -> FmodResult<()> {
+        unsafe { FMOD_System_Update(self.0) }.ok_then(|| ())
     }
 
     pub fn create_channel_group(&self, name: &str) -> FmodResult<ChannelGroup> {
