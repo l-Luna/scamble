@@ -26,31 +26,34 @@ impl Dsp for DySynth {
         self.tail = 0.;
     }
 
-    fn read(&mut self, _: &[f32], buf: &mut [f32], _: usize, out_chan: usize) {
-        let ulen = buf.len() / out_chan;
+    fn read(&mut self, _: &[f32], buf: &mut [f32], _: usize, chan: usize) {
+        let ulen = buf.len() / chan;
 
         buf[0] = shift(self.tail);
         for i in 1..ulen {
-            buf[i * 2] = shift(buf[i * 2 - 2]);
+            buf[i * chan] = shift(buf[(i - 1) * chan]);
         }
 
         // low-pass
         for _ in 0..4 {
+            buf[0] = (buf[0] + self.tail) / 2.;
             for i in 1..ulen {
-                buf[i * 2] = (buf[i * 2] + buf[i * 2 - 2]) / 2.;
+                buf[i * chan] = (buf[i * chan] + buf[(i - 1) * chan]) / 2.;
             }
         }
 
-        // sync buffers
+        // sync channels
         for i in 0..ulen {
-            buf[i * 2 + 1] = buf[i * 2];
+            for j in 1..chan {
+                buf[i * chan + j] = buf[i * chan];
+            }
         }
 
         // set tail
-        self.tail = buf[ulen * 2 - 1];
+        self.tail = buf[ulen * chan - 1];
     }
 }
 
 fn shift(it: f32) -> f32 {
-    (it + rng().random_range(-0.05..0.05)).clamp(-1., 1.)
+    (it + rng().random_range(-0.1..0.1)).clamp(-1., 1.)
 }
