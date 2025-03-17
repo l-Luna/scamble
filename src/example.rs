@@ -22,7 +22,9 @@ impl Dsp for DySynth {
         DySynth { tail: 0. }
     }
 
-    fn reset(&mut self) {}
+    fn reset(&mut self) {
+        self.tail = 0.;
+    }
 
     fn read(&mut self, _: &[f32], buf: &mut [f32], _: usize, out_chan: usize) {
         let ulen = buf.len() / out_chan;
@@ -33,7 +35,7 @@ impl Dsp for DySynth {
         }
 
         // low-pass
-        for _ in 0..2 {
+        for _ in 0..4 {
             for i in 1..ulen {
                 buf[i * 2] = (buf[i * 2] + buf[i * 2 - 2]) / 2.;
             }
@@ -50,5 +52,5 @@ impl Dsp for DySynth {
 }
 
 fn shift(it: f32) -> f32 {
-    (it + rng().random_range(-0.1..0.1)).clamp(-1., 1.)
+    (it + rng().random_range(-0.05..0.05)).clamp(-1., 1.)
 }
