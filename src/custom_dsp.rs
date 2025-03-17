@@ -119,27 +119,29 @@ pub fn into_desc<D: Dsp>() -> FMOD_DSP_DESCRIPTION {
 static dbgstr: &'static str = "Rust DSP\0";
 
 extern "C" fn create_callback<D: Dsp>(dsp_state: *mut FMOD_DSP_STATE) -> FMOD_RESULT {
-    let instance = D::create();
+    let data = D::create();
     unsafe {
         let mem = (*(*dsp_state).functions).alloc.unwrap()(size_of::<D>() as c_uint, FMOD_MEMORY_NORMAL, dbgstr.as_ptr() as *const _) as *mut D;
-        ptr::write(mem, instance);
+        ptr::write(mem, data);
+        (*dsp_state).plugindata = mem as *mut _;
     }
     FMOD_OK
 }
 
 extern "C" fn release_callback<D: Dsp>(dsp_state: *mut FMOD_DSP_STATE) -> FMOD_RESULT {
     unsafe {
-        let x = (*dsp_state).instance;
+        let x = (*dsp_state).plugindata;
         drop(ptr::read(x as *mut D));
         (*(*dsp_state).functions).free.unwrap()(x, FMOD_MEMORY_NORMAL, dbgstr.as_ptr() as *const _);
+        (*dsp_state).plugindata = ptr::null_mut();
     }
     FMOD_OK
 }
 
 extern "C" fn reset_callback<D: Dsp>(dsp_state: *mut FMOD_DSP_STATE) -> FMOD_RESULT {
     unsafe {
-        let instance = &mut *((*dsp_state).instance as *mut D);
-        instance.reset();
+        let data = &mut *((*dsp_state).plugindata as *mut D);
+        data.reset();
     }
     FMOD_OK
 }
@@ -153,8 +155,8 @@ extern "C" fn should_process_callback<D: Dsp>(
     _: FMOD_SPEAKERMODE,
 ) -> FMOD_RESULT {
     unsafe {
-        let instance = &mut *((*dsp_state).instance as *mut D);
-        match instance.should_process(idle == 1) {
+        let data = &mut *((*dsp_state).plugindata as *mut D);
+        match data.should_process(idle == 1) {
             ProcessResult::Continue => FMOD_OK,
             ProcessResult::SkipNoEffect => FMOD_ERR_DSP_DONTPROCESS,
             ProcessResult::SkipSilent => FMOD_ERR_DSP_SILENCE,
@@ -171,8 +173,8 @@ extern "C" fn read_callback<D: Dsp>(
     out_channels: *mut std::os::raw::c_int,
 ) -> FMOD_RESULT {
     unsafe {
-        let instance = &mut *((*dsp_state).instance as *mut D);
-        instance.read(
+        let data = &mut *((*dsp_state).plugindata as *mut D);
+        data.read(
             &*slice_from_raw_parts(in_data, length as usize),
             &mut *slice_from_raw_parts_mut(out_data, length as usize),
             in_channels as usize,
@@ -195,10 +197,10 @@ extern "C" fn process_callback<D: Dsp>(
             *(*out_buffers).buffernumchannels = 2;
             FMOD_OK
         } else {
-            let instance = &mut *((*dsp_state).instance as *mut D);
+            let data = &mut *((*dsp_state).plugindata as *mut D);
             let in_chan = (*(*in_buffers).buffernumchannels) as usize;
             let out_chan = (*(*out_buffers).buffernumchannels) as usize;
-            instance.read(
+            data.read(
                 &*slice_from_raw_parts(*(*in_buffers).buffers, length as usize * in_chan),
                 &mut *slice_from_raw_parts_mut(*(*out_buffers).buffers, length as usize * out_chan),
                 in_chan,
