@@ -1,6 +1,6 @@
 use crate::fmod::channel::Channel;
 use crate::fmod::channel_group::ChannelGroup;
-use crate::fmod::dsp::Dsp;
+use crate::fmod::dsp::DspInstance;
 use crate::fmod::result::*;
 use crate::raw_bindings::*;
 use std::ffi::CString;
@@ -36,14 +36,19 @@ impl System {
         result.ok_then(|| ChannelGroup(cgroup))
     }
 
-    pub fn create_dsp_from_description(&self, dsp_desc: FMOD_DSP_DESCRIPTION) -> FmodResult<Dsp> {
+    pub fn create_dsp_by_type(&self, dsp_type: FMOD_DSP_TYPE) -> FmodResult<DspInstance>{
         let mut dsp = ptr::null_mut();
-        unsafe { FMOD_System_CreateDSP(self.0, &dsp_desc, &mut dsp) }.ok_then(|| Dsp(dsp))
+        unsafe { FMOD_System_CreateDSPByType(self.0, dsp_type, &mut dsp) }.ok_then(|| DspInstance(dsp))
+    }
+    
+    pub fn create_dsp_from_description(&self, dsp_desc: &FMOD_DSP_DESCRIPTION) -> FmodResult<DspInstance> {
+        let mut dsp = ptr::null_mut();
+        unsafe { FMOD_System_CreateDSP(self.0, dsp_desc, &mut dsp) }.ok_then(|| DspInstance(dsp))
     }
 
     pub fn play_dsp(
         &self,
-        dsp: &Dsp,
+        dsp: &DspInstance,
         channel_group: &ChannelGroup,
         paused: bool,
     ) -> FmodResult<Channel> {

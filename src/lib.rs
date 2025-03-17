@@ -6,6 +6,7 @@ use crate::raw_bindings::{
 };
 use std::ptr;
 use std::slice::from_raw_parts_mut;
+use rand::{rng, Rng};
 
 pub mod fmod;
 pub mod raw_bindings;
@@ -72,16 +73,16 @@ extern "C" fn process(
             let chann = ((*(*outbufferarray).buffernumchannels) as usize);
             let buf = from_raw_parts_mut(*(*outbufferarray).buffers, ulen * chann);
 
-            let data = [0.; 128];
+            // let data = [0.; 128];
 
-            /*buf[0] = rng().random_range(0. ..1.);
+            buf[0] = rng().random_range(0. ..1.);
             buf[1] = rng().random_range(0. ..1.);
             buf[2] = rng().random_range(0. ..1.);
             buf[3] = rng().random_range(0. ..1.);
             for i in 2..ulen{
                 buf[i*2] = (rng().random_range(0. ..1.) + buf[i*2 - 2] + buf[i*2 - 4]) / 3.;
                 buf[i*2+1] = buf[i*2];
-            }*/
+            }
             FMOD_OK
         }
     }
