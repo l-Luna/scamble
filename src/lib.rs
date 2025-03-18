@@ -16,9 +16,18 @@ use crate::example::DySynth;
 
 static mut DESC: MaybeUninit<FMOD_DSP_DESCRIPTION> = MaybeUninit::zeroed();
 
+#[cfg(windows)]
 #[allow(non_snake_case)]
 #[allow(static_mut_refs)]
 #[unsafe(no_mangle)]
 unsafe extern "stdcall" fn FMODGetDSPDescription() -> *const FMOD_DSP_DESCRIPTION {
+    unsafe { DESC.write(custom_dsp::into_desc::<DySynth>()) }
+}
+
+#[cfg(not(windows))]
+#[allow(non_snake_case)]
+#[allow(static_mut_refs)]
+#[unsafe(no_mangle)]
+unsafe extern "C" fn FMODGetDSPDescription() -> *const FMOD_DSP_DESCRIPTION {
     unsafe { DESC.write(custom_dsp::into_desc::<DySynth>()) }
 }

@@ -55,5 +55,5 @@ impl Dsp for DySynth {
 }
 
 fn shift(it: f32) -> f32 {
-    (it + rng().random_range(-0.1..0.1)).clamp(-1., 1.)
+    (it + rng().random_range(-0.01..0.01)).clamp(-1., 1.)
 }
