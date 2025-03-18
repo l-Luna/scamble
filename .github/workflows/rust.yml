@@ -25,5 +25,5 @@ jobs:
         name: plugin
         path: |
           target/debug/scamble.dll
-          target/debug/scamble.so
-          target/debug/scamble.dylib
+          target/debug/libscamble.so
+          target/debug/libscamble.dylib
