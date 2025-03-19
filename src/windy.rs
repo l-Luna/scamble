@@ -1,11 +1,11 @@
 use crate::custom_dsp::{Dsp, DspType};
 use rand::{Rng, rng};
 
-pub struct DySynth {
+pub struct WindySynth {
     tail: f32,
 }
 
-impl Dsp for DySynth {
+impl Dsp for WindySynth {
     fn name() -> &'static str {
         "Scamble"
     }
@@ -19,7 +19,7 @@ impl Dsp for DySynth {
     }
 
     fn create() -> Self {
-        DySynth { tail: 0. }
+        WindySynth { tail: 0. }
     }
 
     fn reset(&mut self) {

@@ -1,7 +1,7 @@
 use std::ffi::c_uint;
 use crate::raw_bindings::FMOD_RESULT::{FMOD_ERR_DSP_DONTPROCESS, FMOD_ERR_DSP_SILENCE};
 use crate::raw_bindings::{FMOD_BOOL, FMOD_CHANNELMASK, FMOD_DSP_BUFFER_ARRAY, FMOD_DSP_DESCRIPTION, FMOD_DSP_PROCESS_OPERATION, FMOD_DSP_STATE, FMOD_MEMORY_NORMAL, FMOD_PLUGIN_SDK_VERSION, FMOD_RESULT, FMOD_RESULT::FMOD_OK, FMOD_SPEAKERMODE};
-use std::{mem, ptr};
+use std::ptr;
 use std::ptr::{slice_from_raw_parts, slice_from_raw_parts_mut};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -45,23 +45,88 @@ pub trait Dsp {
     );
 }
 
+// and now the fun stuff
+
 // wrapping DSPs into FMOD's format
 
 #[macro_export]
 macro_rules! expose_dsp {
     ($t:ty) => {
         const _: () = {
+            use paste::paste;
             use crate::custom_dsp;
             use core::mem::MaybeUninit;
             use crate::raw_bindings::FMOD_DSP_DESCRIPTION;
 
-            static mut DESC: MaybeUninit<FMOD_DSP_DESCRIPTION> = MaybeUninit::uninit();
+            paste!{
+                #[allow(non_snake_case)]
+                static mut [<$t _ DESC>]: MaybeUninit<FMOD_DSP_DESCRIPTION> = MaybeUninit::uninit();
+            }
 
+            #[cfg(windows)]
             #[allow(non_snake_case)]
             #[unsafe(no_mangle)]
+            #[allow(static_mut_refs)]
             unsafe extern "stdcall" fn FMODGetDSPDescription() -> *const FMOD_DSP_DESCRIPTION {
+                unsafe { paste!([<$t _ DESC>]).write(custom_dsp::into_desc::<$t>()) }
+            }
+
+            #[cfg(not(windows))]
+            #[allow(non_snake_case)]
+            #[unsafe(no_mangle)]
+            #[allow(static_mut_refs)]
+            unsafe extern "C" fn FMODGetDSPDescription() -> *const FMOD_DSP_DESCRIPTION {
+                unsafe { paste!([<$t DESC>]).write(custom_dsp::into_desc::<$t>()) }
+            }
+        };
+    };
+}
+
+#[macro_export]
+macro_rules! expose_dsp_list {
+    ($($t:ty $(,)?)*) => {
+        const _: () = {
+            use core::mem::MaybeUninit;
+            use core::ptr;
+            use paste::paste;
+            use crate::custom_dsp;
+            use crate::raw_bindings::FMOD_DSP_DESCRIPTION;
+            use crate::raw_bindings::FMOD_PLUGINLIST;
+            use crate::raw_bindings::FMOD_PLUGINTYPE::FMOD_PLUGINTYPE_DSP;
+            use crate::raw_bindings::FMOD_PLUGINTYPE::FMOD_PLUGINTYPE_MAX;
+
+            $(
+                paste!{
+                    #[allow(non_upper_case_globals)]
+                    static mut [<$t _ DESC>]: MaybeUninit<FMOD_DSP_DESCRIPTION> = MaybeUninit::uninit();
+
+                    #[allow(static_mut_refs)]
+                    #[allow(non_snake_case)]
+                    fn [<Write $t>]() -> *const FMOD_DSP_DESCRIPTION {
+                        unsafe { paste!([<$t _ DESC>]).write(custom_dsp::into_desc::<$t>()) }
+                    }
+                }
+            )*
+
+            static mut PLUGIN_LIST: MaybeUninit<[FMOD_PLUGINLIST; ${count($t)} + 1]> = MaybeUninit::zeroed();
+
+            #[cfg(windows)]
+            #[allow(non_snake_case)]
+            #[unsafe(no_mangle)]
+            #[allow(static_mut_refs)]
+            unsafe extern "stdcall" fn FMODGetPluginDescriptionList() -> *const FMOD_PLUGINLIST {
                 unsafe {
-                    (*&raw mut DESC).write(custom_dsp::into_desc::<$t>())
+                    PLUGIN_LIST.write([$( FMOD_PLUGINLIST { type_: FMOD_PLUGINTYPE_DSP, description: paste!([< Write $t >])() as *mut _ }, )* FMOD_PLUGINLIST{ type_: FMOD_PLUGINTYPE_MAX, description: ptr::null_mut() } ]).as_ptr()
+                }
+            }
+
+            #[cfg(not(windows))]
+            #[allow(non_snake_case)]
+            #[unsafe(no_mangle)]
+            #[allow(static_mut_refs)]
+            unsafe extern "C" fn FMODGetPluginDescriptionList() -> *const FMOD_DSP_DESCRIPTION {
+                unsafe {
+                    PLUGIN_LIST.write([$( FMOD_PLUGINLIST { type_: FMOD_PLUGINTYPE_DSP, description: paste!([< Write $t >])() as *mut _ }, )* FMOD_PLUGINLIST{ type_: FMOD_PLUGINTYPE_MAX, description: ptr::null_mut() } ]).as_ptr()
                 }
             }
         };
@@ -69,6 +134,7 @@ macro_rules! expose_dsp {
 }
 
 pub(crate) use expose_dsp;
+pub(crate) use expose_dsp_list;
 
 pub fn into_desc<D: Dsp>() -> FMOD_DSP_DESCRIPTION {
     // name sanitization
@@ -156,7 +222,7 @@ extern "C" fn should_process_callback<D: Dsp>(
 ) -> FMOD_RESULT {
     unsafe {
         let data = &mut *((*dsp_state).plugindata as *mut D);
-        match data.should_process(idle == 1) {
+        match data.should_process(idle != 0) {
             ProcessResult::Continue => FMOD_OK,
             ProcessResult::SkipNoEffect => FMOD_ERR_DSP_DONTPROCESS,
             ProcessResult::SkipSilent => FMOD_ERR_DSP_SILENCE,
@@ -189,13 +255,25 @@ extern "C" fn process_callback<D: Dsp>(
     length: std::os::raw::c_uint,
     in_buffers: *const FMOD_DSP_BUFFER_ARRAY,
     out_buffers: *mut FMOD_DSP_BUFFER_ARRAY,
-    _: FMOD_BOOL,
+    idle: FMOD_BOOL,
     op: FMOD_DSP_PROCESS_OPERATION,
 ) -> FMOD_RESULT {
     unsafe {
         if op == FMOD_DSP_PROCESS_OPERATION::FMOD_DSP_PROCESS_QUERY {
-            *(*out_buffers).buffernumchannels = 2;
-            FMOD_OK
+            match D::ty() {
+                DspType::Generator => {
+                    *(*out_buffers).buffernumchannels = 2;
+                    FMOD_OK
+                }
+                DspType::Effect => {
+                    let data = &mut *((*dsp_state).plugindata as *mut D);
+                    match data.should_process(idle != 0) {
+                        ProcessResult::Continue => FMOD_OK,
+                        ProcessResult::SkipNoEffect => FMOD_ERR_DSP_DONTPROCESS,
+                        ProcessResult::SkipSilent => FMOD_ERR_DSP_SILENCE,
+                    }
+                }
+            }
         } else {
             let data = &mut *((*dsp_state).plugindata as *mut D);
             let in_chan = (*(*in_buffers).buffernumchannels) as usize;

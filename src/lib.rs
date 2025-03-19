@@ -1,33 +1,17 @@
-use crate::raw_bindings::FMOD_DSP_DESCRIPTION;
+#![feature(macro_metavar_expr)]
+#![feature(portable_simd)]
+
+use crate::dynamics::LocalDynamics;
+use crate::windy::WindySynth;
 
 pub mod fmod;
 pub mod raw_bindings;
 
 #[cfg(test)]
 mod simulate;
-mod example;
+mod windy;
 pub mod custom_dsp;
 mod result;
+mod dynamics;
 
-// use crate::custom_dsp;
-// use crate::raw_bindings::FMOD_DSP_DESCRIPTION;
-use core::mem::MaybeUninit;
-use crate::example::DySynth;
-
-static mut DESC: MaybeUninit<FMOD_DSP_DESCRIPTION> = MaybeUninit::zeroed();
-
-#[cfg(windows)]
-#[allow(non_snake_case)]
-#[allow(static_mut_refs)]
-#[unsafe(no_mangle)]
-unsafe extern "stdcall" fn FMODGetDSPDescription() -> *const FMOD_DSP_DESCRIPTION {
-    unsafe { DESC.write(custom_dsp::into_desc::<DySynth>()) }
-}
-
-#[cfg(not(windows))]
-#[allow(non_snake_case)]
-#[allow(static_mut_refs)]
-#[unsafe(no_mangle)]
-unsafe extern "C" fn FMODGetDSPDescription() -> *const FMOD_DSP_DESCRIPTION {
-    unsafe { DESC.write(custom_dsp::into_desc::<DySynth>()) }
-}
+expose_dsp_list!(WindySynth, LocalDynamics);
