@@ -124,7 +124,7 @@ macro_rules! expose_dsp_list {
             #[allow(non_snake_case)]
             #[unsafe(no_mangle)]
             #[allow(static_mut_refs)]
-            unsafe extern "C" fn FMODGetPluginDescriptionList() -> *const FMOD_DSP_DESCRIPTION {
+            unsafe extern "C" fn FMODGetPluginDescriptionList() -> *const FMOD_PLUGINLIST {
                 unsafe {
                     PLUGIN_LIST.write([$( FMOD_PLUGINLIST { type_: FMOD_PLUGINTYPE_DSP, description: paste!([< Write $t >])() as *mut _ }, )* FMOD_PLUGINLIST{ type_: FMOD_PLUGINTYPE_MAX, description: ptr::null_mut() } ]).as_ptr()
                 }
