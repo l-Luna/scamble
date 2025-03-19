@@ -1,5 +1,6 @@
 use crate::custom_dsp::{Dsp, DspType};
-use std::simd::{StdFloat, f32x64};
+use std::simd::{StdFloat, f32x16};
+use std::simd::num::SimdFloat;
 
 pub struct LocalDynamics {}
 
@@ -25,13 +26,12 @@ impl Dsp for LocalDynamics {
     fn read(&mut self, in_data: &[f32], out_data: &mut [f32], _: usize, _: usize) {
         // vector loop
         let l = in_data.len();
-        for i in 0..l / 64 {
-            f32x64::load_or(&in_data[i * 64..], f32x64::splat(0.))
-                .sin()
-                .copy_to_slice(&mut out_data[i * 64..]);
+        for i in 0..l / 16 {
+            let x = f32x16::load_or(&in_data[i * 16..], f32x16::splat(0.));
+            x.abs().sqrt().copysign(x).copy_to_slice(&mut out_data[i * 16..]);
         }
         // leftovers
-        for i in l - (l / 64) * 64..l {
+        for i in l - ((l / 16) * 16)..l {
             let x = in_data[i];
             out_data[i] = x.abs().sqrt().copysign(x);
         }
