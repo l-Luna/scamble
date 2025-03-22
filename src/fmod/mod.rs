@@ -6,3 +6,5 @@ pub mod channel_group;
 pub mod dsp;
 #[cfg(test)]
 pub mod system;
+#[cfg(test)]
+pub mod sound;

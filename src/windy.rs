@@ -26,6 +26,10 @@ impl Dsp for WindySynth {
         self.tail = 0.;
     }
 
+    fn preferred_out_channels(&self) -> Option<usize> {
+        Some(2)
+    }
+
     fn read(&mut self, _: &[f32], buf: &mut [f32], _: usize, chan: usize) {
         let ulen = buf.len() / chan;
 

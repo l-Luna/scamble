@@ -1,7 +1,7 @@
-use std::ffi::c_uint;
-use crate::raw_bindings::FMOD_RESULT::{FMOD_ERR_DSP_DONTPROCESS, FMOD_ERR_DSP_SILENCE};
-use crate::raw_bindings::{FMOD_BOOL, FMOD_CHANNELMASK, FMOD_DSP_BUFFER_ARRAY, FMOD_DSP_DESCRIPTION, FMOD_DSP_PROCESS_OPERATION, FMOD_DSP_STATE, FMOD_MEMORY_NORMAL, FMOD_PLUGIN_SDK_VERSION, FMOD_RESULT, FMOD_RESULT::FMOD_OK, FMOD_SPEAKERMODE};
-use std::ptr;
+use crate::raw_bindings::FMOD_RESULT::{FMOD_ERR_DSP_DONTPROCESS, FMOD_ERR_DSP_SILENCE, FMOD_ERR_PLUGIN};
+use crate::raw_bindings::{FMOD_BOOL, FMOD_CHANNELMASK, FMOD_COMPLEX, FMOD_DSP_BUFFER_ARRAY, FMOD_DSP_DESCRIPTION, FMOD_DSP_DFT_FFTREAL_FUNC, FMOD_DSP_DFT_IFFTREAL_FUNC, FMOD_DSP_PROCESS_OPERATION, FMOD_DSP_STATE, FMOD_MEMORY_NORMAL, FMOD_PLUGIN_SDK_VERSION, FMOD_RESULT, FMOD_RESULT::FMOD_OK, FMOD_SPEAKERMODE};
+use std::ffi::{c_int, c_uint};
+use std::{panic, ptr};
 use std::ptr::{slice_from_raw_parts, slice_from_raw_parts_mut};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -28,12 +28,16 @@ pub trait Dsp {
     fn reset(&mut self);
 
     // processing
-    fn should_process(&self, idle: bool) -> ProcessResult {
+    fn should_process(&mut self, idle: bool, incoming_length: usize) -> ProcessResult {
         if idle {
             ProcessResult::SkipSilent
         } else {
             ProcessResult::Continue
         }
+    }
+
+    fn preferred_out_channels(&self) -> Option<usize> {
+        None
     }
 
     fn read(
@@ -45,6 +49,38 @@ pub trait Dsp {
     );
 }
 
+pub fn fft(signal: &[f32], window: &[f32], channels: usize, output: &mut [FMOD_COMPLEX]) {
+    let size = signal.len();
+    // assert size == window.len() == output.len()
+    // assert hop < size
+    unsafe {
+        FFT_FN.expect("cannot use custom_dsp::fft from outside Dsp::read!")(
+            CUR_DSP_STATE.unwrap(),
+            (size / channels) as c_int,
+            signal.as_ptr(),
+            output.as_mut_ptr(),
+            window.as_ptr(),
+            channels as c_int,
+        ).ok_then(|| ()).fm_unwrap();
+    }
+}
+
+pub fn ifft(frequencies: &[FMOD_COMPLEX], window: &[f32], channels: usize, output: &mut [f32]) {
+    let size = frequencies.len();
+    // assert size == window.len() == output.len()
+    // assert hop < size
+    unsafe {
+        IFFT_FN.expect("cannot use custom_dsp::ifft from outside Dsp::read!")(
+            CUR_DSP_STATE.unwrap(),
+            (size / channels) as c_int,
+            frequencies.as_ptr(),
+            output.as_mut_ptr(),
+            window.as_ptr(),
+            channels as c_int,
+        ).ok_then(|| ()).fm_unwrap();
+    }
+}
+
 // and now the fun stuff
 
 // wrapping DSPs into FMOD's format
@@ -53,12 +89,12 @@ pub trait Dsp {
 macro_rules! expose_dsp {
     ($t:ty) => {
         const _: () = {
-            use paste::paste;
             use crate::custom_dsp;
-            use core::mem::MaybeUninit;
             use crate::raw_bindings::FMOD_DSP_DESCRIPTION;
+            use core::mem::MaybeUninit;
+            use paste::paste;
 
-            paste!{
+            paste! {
                 #[allow(non_snake_case)]
                 static mut [<$t _ DESC>]: MaybeUninit<FMOD_DSP_DESCRIPTION> = MaybeUninit::uninit();
             }
@@ -135,6 +171,7 @@ macro_rules! expose_dsp_list {
 
 pub(crate) use expose_dsp;
 pub(crate) use expose_dsp_list;
+use crate::result::FmResultTrait;
 
 pub fn into_desc<D: Dsp>() -> FMOD_DSP_DESCRIPTION {
     // name sanitization
@@ -184,10 +221,19 @@ pub fn into_desc<D: Dsp>() -> FMOD_DSP_DESCRIPTION {
 
 static dbgstr: &'static str = "Rust DSP\0";
 
+// put these function pointers in statics for pure convenience; they're always updated on the same thread
+static mut FFT_FN: FMOD_DSP_DFT_FFTREAL_FUNC = None;
+static mut IFFT_FN: FMOD_DSP_DFT_IFFTREAL_FUNC = None;
+static mut CUR_DSP_STATE: Option<*mut FMOD_DSP_STATE> = None;
+
 extern "C" fn create_callback<D: Dsp>(dsp_state: *mut FMOD_DSP_STATE) -> FMOD_RESULT {
     let data = D::create();
     unsafe {
-        let mem = (*(*dsp_state).functions).alloc.unwrap()(size_of::<D>() as c_uint, FMOD_MEMORY_NORMAL, dbgstr.as_ptr() as *const _) as *mut D;
+        let mem = (*(*dsp_state).functions).alloc.unwrap()(
+            size_of::<D>() as c_uint,
+            FMOD_MEMORY_NORMAL,
+            dbgstr.as_ptr() as *const _,
+        ) as *mut D;
         ptr::write(mem, data);
         (*dsp_state).plugindata = mem as *mut _;
     }
@@ -206,26 +252,37 @@ extern "C" fn release_callback<D: Dsp>(dsp_state: *mut FMOD_DSP_STATE) -> FMOD_R
 
 extern "C" fn reset_callback<D: Dsp>(dsp_state: *mut FMOD_DSP_STATE) -> FMOD_RESULT {
     unsafe {
-        let data = &mut *((*dsp_state).plugindata as *mut D);
-        data.reset();
+        let result = panic::catch_unwind(|| {
+            let data = &mut *((*dsp_state).plugindata as *mut D);
+            data.reset();
+        });
+        match result{
+            Ok(_) => FMOD_OK,
+            Err(_) => FMOD_ERR_PLUGIN
+        }
     }
-    FMOD_OK
 }
 
 extern "C" fn should_process_callback<D: Dsp>(
     dsp_state: *mut FMOD_DSP_STATE,
     idle: FMOD_BOOL,
-    _: std::os::raw::c_uint,
+    length: std::os::raw::c_uint,
     _: FMOD_CHANNELMASK, // deprecated
     _: std::os::raw::c_int,
     _: FMOD_SPEAKERMODE,
 ) -> FMOD_RESULT {
     unsafe {
-        let data = &mut *((*dsp_state).plugindata as *mut D);
-        match data.should_process(idle != 0) {
-            ProcessResult::Continue => FMOD_OK,
-            ProcessResult::SkipNoEffect => FMOD_ERR_DSP_DONTPROCESS,
-            ProcessResult::SkipSilent => FMOD_ERR_DSP_SILENCE,
+        let result = panic::catch_unwind(|| {
+            let data = &mut *((*dsp_state).plugindata as *mut D);
+            match data.should_process(idle != 0, length as usize) {
+                ProcessResult::Continue => FMOD_OK,
+                ProcessResult::SkipNoEffect => FMOD_ERR_DSP_DONTPROCESS,
+                ProcessResult::SkipSilent => FMOD_ERR_DSP_SILENCE,
+            }
+        });
+        match result{
+            Ok(_) => FMOD_OK,
+            Err(_) => FMOD_ERR_PLUGIN
         }
     }
 }
@@ -239,15 +296,20 @@ extern "C" fn read_callback<D: Dsp>(
     out_channels: *mut std::os::raw::c_int,
 ) -> FMOD_RESULT {
     unsafe {
-        let data = &mut *((*dsp_state).plugindata as *mut D);
-        data.read(
-            &*slice_from_raw_parts(in_data, length as usize),
-            &mut *slice_from_raw_parts_mut(out_data, length as usize),
-            in_channels as usize,
-            *out_channels as usize,
-        );
+        let result = panic::catch_unwind(|| {
+            let data = &mut *((*dsp_state).plugindata as *mut D);
+            data.read(
+                &*slice_from_raw_parts(in_data, length as usize),
+                &mut *slice_from_raw_parts_mut(out_data, length as usize),
+                in_channels as usize,
+                *out_channels as usize,
+            );
+        });
+        match result{
+            Ok(_) => FMOD_OK,
+            Err(_) => FMOD_ERR_PLUGIN
+        }
     }
-    FMOD_OK
 }
 
 extern "C" fn process_callback<D: Dsp>(
@@ -259,32 +321,38 @@ extern "C" fn process_callback<D: Dsp>(
     op: FMOD_DSP_PROCESS_OPERATION,
 ) -> FMOD_RESULT {
     unsafe {
-        if op == FMOD_DSP_PROCESS_OPERATION::FMOD_DSP_PROCESS_QUERY {
-            match D::ty() {
-                DspType::Generator => {
-                    *(*out_buffers).buffernumchannels = 2;
-                    FMOD_OK
+        CUR_DSP_STATE = Some(dsp_state);
+        FFT_FN = (*(*(*dsp_state).functions).dft).fftreal;
+        IFFT_FN = (*(*(*dsp_state).functions).dft).inversefftreal;
+        let proc = panic::catch_unwind(|| {
+            let data = &mut *((*dsp_state).plugindata as *mut D);
+            if op == FMOD_DSP_PROCESS_OPERATION::FMOD_DSP_PROCESS_QUERY {
+                if let Some(channels) = data.preferred_out_channels() {
+                    *(*out_buffers).buffernumchannels = channels as c_int;
                 }
-                DspType::Effect => {
-                    let data = &mut *((*dsp_state).plugindata as *mut D);
-                    match data.should_process(idle != 0) {
+                match D::ty() {
+                    DspType::Generator => FMOD_OK,
+                    DspType::Effect => match data.should_process(idle != 0, length as usize) {
                         ProcessResult::Continue => FMOD_OK,
                         ProcessResult::SkipNoEffect => FMOD_ERR_DSP_DONTPROCESS,
                         ProcessResult::SkipSilent => FMOD_ERR_DSP_SILENCE,
-                    }
+                    },
                 }
+            } else {
+                let in_chan = (*(*in_buffers).buffernumchannels) as usize;
+                let out_chan = (*(*out_buffers).buffernumchannels) as usize;
+                data.read(
+                    &*slice_from_raw_parts(*(*in_buffers).buffers, length as usize * in_chan),
+                    &mut *slice_from_raw_parts_mut(*(*out_buffers).buffers, length as usize * out_chan),
+                    in_chan,
+                    out_chan,
+                );
+                FMOD_OK
             }
-        } else {
-            let data = &mut *((*dsp_state).plugindata as *mut D);
-            let in_chan = (*(*in_buffers).buffernumchannels) as usize;
-            let out_chan = (*(*out_buffers).buffernumchannels) as usize;
-            data.read(
-                &*slice_from_raw_parts(*(*in_buffers).buffers, length as usize * in_chan),
-                &mut *slice_from_raw_parts_mut(*(*out_buffers).buffers, length as usize * out_chan),
-                in_chan,
-                out_chan,
-            );
-            FMOD_OK
-        }
+        });
+        CUR_DSP_STATE = None;
+        FFT_FN = None;
+        IFFT_FN = None;
+        proc.unwrap_or_else(|_| FMOD_RESULT::FMOD_ERR_PLUGIN)
     }
 }

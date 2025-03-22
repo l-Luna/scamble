@@ -1,8 +1,9 @@
 use crate::fmod::channel::Channel;
 use crate::fmod::channel_group::ChannelGroup;
 use crate::fmod::dsp::DspInstance;
-use crate::result::*;
+use crate::fmod::sound::Sound;
 use crate::raw_bindings::*;
+use crate::result::*;
 use std::ffi::CString;
 use std::ptr;
 
@@ -36,20 +37,59 @@ impl System {
         result.ok_then(|| ChannelGroup(cgroup))
     }
 
-    pub fn create_dsp_by_type(&self, dsp_type: FMOD_DSP_TYPE) -> FmodResult<DspInstance>{
+    pub fn create_dsp_by_type(&self, dsp_type: FMOD_DSP_TYPE) -> FmodResult<DspInstance> {
         let mut dsp = ptr::null_mut();
-        unsafe { FMOD_System_CreateDSPByType(self.0, dsp_type, &mut dsp) }.ok_then(|| DspInstance(dsp))
+        unsafe { FMOD_System_CreateDSPByType(self.0, dsp_type, &mut dsp) }
+            .ok_then(|| DspInstance(dsp))
     }
-    
-    pub fn create_dsp_from_description(&self, dsp_desc: &FMOD_DSP_DESCRIPTION) -> FmodResult<DspInstance> {
+
+    pub fn create_dsp_from_description(
+        &self,
+        dsp_desc: &FMOD_DSP_DESCRIPTION,
+    ) -> FmodResult<DspInstance> {
         let mut dsp = ptr::null_mut();
         unsafe { FMOD_System_CreateDSP(self.0, dsp_desc, &mut dsp) }.ok_then(|| DspInstance(dsp))
+    }
+
+    pub fn create_sound(&self, filename: &str) -> FmodResult<Sound> {
+        let mut sound = ptr::null_mut();
+        unsafe {
+            let mut string = filename.to_owned();
+            string.push('\0');
+            FMOD_System_CreateSound(
+                self.0,
+                string.as_ptr() as *const _,
+                0,
+                ptr::null_mut(),
+                &mut sound,
+            )
+        }
+        .ok_then(|| Sound(sound))
+    }
+
+    pub fn play_sound(
+        &self,
+        sound: Sound,
+        channel_group: Option<&ChannelGroup>,
+        paused: bool,
+    ) -> FmodResult<Channel> {
+        let mut channel = ptr::null_mut();
+        unsafe {
+            FMOD_System_PlaySound(
+                self.0,
+                sound.0,
+                channel_group.unwrap_or(&ChannelGroup::NULL_GROUP).0,
+                if paused { 1 } else { 0 },
+                &mut channel,
+            )
+        }
+        .ok_then(|| Channel(channel))
     }
 
     pub fn play_dsp(
         &self,
         dsp: &DspInstance,
-        channel_group: &ChannelGroup,
+        channel_group: Option<&ChannelGroup>,
         paused: bool,
     ) -> FmodResult<Channel> {
         let mut channel = ptr::null_mut();
@@ -57,7 +97,7 @@ impl System {
             FMOD_System_PlayDSP(
                 self.0,
                 dsp.0,
-                channel_group.0,
+                channel_group.unwrap_or(&ChannelGroup::NULL_GROUP).0,
                 FMOD_BOOL::from(paused),
                 &mut channel,
             )
