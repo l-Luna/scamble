@@ -27,7 +27,7 @@ pub struct NoiseReduction {
     // accumulated persistent frequencies
     persistent_freqs: [f32; 1025],
     // frequencies over time, for modulation checking
-    accumulated_freqs: [CircularBuffer<256, f32>; 8],
+    accumulated_freqs: [CircularBuffer<256, f32>; 16],
     // FFT instances
     dft_fwd: Arc<dyn RealToComplex<f32>>,
     dft_bwd: Arc<dyn ComplexToReal<f32>>,
@@ -120,6 +120,8 @@ impl Dsp for NoiseReduction {
         self.delay_left.extend(in_data.iter().step_by(2));
         self.delay_right.extend(in_data.iter().skip(1).step_by(2));
 
+        self.clock += in_data.len() / 2;
+
         // when we have enough data...
         if self.delay_left.is_full() && self.delay_right.is_full() {
             // copy from circular buffers to scratch space
@@ -172,7 +174,7 @@ impl Dsp for NoiseReduction {
             variance = ((variance / n as f32) - mean * mean).sqrt();
 
             // push new accumulated frequency entry
-            for i in 0..8 {
+            for i in 0..16 {
                 self.accumulated_freqs[i].push_back(0.);
             }
 
@@ -188,7 +190,7 @@ impl Dsp for NoiseReduction {
 
                 // update accumulated frequencies
                 let norm = self.out_left[i].norm();
-                let buffer = &mut self.accumulated_freqs[(i / 128).min(7)];
+                let buffer = &mut self.accumulated_freqs[(i / 64).min(15)];
                 let blen = buffer.len() - 1; // lifetime shenanigans
                 buffer[blen] += norm;
 
@@ -205,10 +207,10 @@ impl Dsp for NoiseReduction {
             }
 
             #[cfg(test)]
-            let mut md = [[0.; 128]; 8];
+            let mut md = [[0.; 128]; 16];
 
             // reuse copy_right and out_right for frequency modulation
-            for i in 0..8 {
+            for i in 0..16 {
                 let mut buf = [0.; 256];
                 copy_contiguous(&self.accumulated_freqs[i], &mut buf);
                 self.dft_mini_fwd.process_with_scratch(&mut buf, &mut self.out_right[..129], &mut self.scratch).unwrap();
@@ -248,9 +250,7 @@ impl Dsp for NoiseReduction {
                 out_data[i * 2 + 1] = self.copy_left[self.copy_left.len() - out_len + i];
             }
 
-            self.clock += in_data.len();
-
-            /* #[cfg(test)] {
+            #[cfg(test)] {
                 let mut dl = [0.; 2048]; copy_contiguous(&self.delay_left, &mut dl);
                 let mut dr = [0.; 2048]; copy_contiguous(&self.delay_right, &mut dr);
                 let mut pf = [0.; 1024]; pf.copy_from_slice(&self.persistent_freqs[..1024]);
@@ -264,7 +264,7 @@ impl Dsp for NoiseReduction {
                     persistent_freqs: pf,
                     modulations: md,
                 });
-            } */
+            }
         }
     }
 }
