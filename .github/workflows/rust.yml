@@ -27,6 +27,6 @@ jobs:
       with:
         name: plugin-${{ matrix.os }}
         path: |
-          target/debug/scamble.dll
-          target/debug/libscamble.so
-          target/debug/libscamble.dylib
+          target/release/scamble.dll
+          target/release/libscamble.so
+          target/release/libscamble.dylib
