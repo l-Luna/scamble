@@ -25,7 +25,7 @@ jobs:
     - name: Upload Plugin
       uses: actions/upload-artifact@v4.6.1
       with:
-        name: plugin
+        name: plugin-${{ matrix.os }}
         path: |
           target/debug/scamble.dll
           target/debug/libscamble.so
