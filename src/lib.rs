@@ -9,7 +9,7 @@ pub mod fmod;
 pub mod raw_bindings;
 
 #[cfg(test)]
-mod simulate;
+pub mod simulate; // accessed in test mod by noise_reduction
 mod windy;
 pub mod custom_dsp;
 mod result;
