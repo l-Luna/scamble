@@ -19,7 +19,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Build
-      run: cargo build --lib --verbose
+      run: cargo build --lib --verbose --release
     #- name: Run tests
     #  run: cargo test --verbose
     - name: Upload Plugin
