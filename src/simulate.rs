@@ -62,7 +62,7 @@ fn sim_effect() {
     let channel = system.play_sound(sound, None, true).fm_unwrap();
     channel.add_dsp(0, &dsp).fm_unwrap();
     channel.set_paused(false).fm_unwrap();
-    for _ in 0..(15 * 60) {
+    for _ in 0..(25 * 60) {
         system.update().fm_unwrap();
         sleep(Duration::from_millis(12));
     }
@@ -76,26 +76,24 @@ fn sim_effect() {
         part.fill(&WHITE).unwrap();
     }
 
+    let length = 800000.;
     let mut samples_chart = ChartBuilder::on(&parts[0])
-        .build_cartesian_2d(2048. ..500000., -1. ..1.)
+        .build_cartesian_2d(2048. ..length, -1. ..1.)
         .unwrap();
     let mut spectrogram_chart = ChartBuilder::on(&parts[1])
-        .build_cartesian_2d(2048. ..500000., 0. ..1024.)
+        .build_cartesian_2d(2048. ..length, 0. ..1024.)
         .unwrap();
     let mut variances_chart = ChartBuilder::on(&parts[2])
-        .build_cartesian_2d(2048. ..500000., 0. ..10.)
+        .build_cartesian_2d(2048. ..length, 0. ..10.)
         .unwrap();
     let mut variances = Vec::new();
     let mut pers_spectrogram_chart = ChartBuilder::on(&parts[3])
-        .build_cartesian_2d(2048. ..500000., 0. ..1024.)
+        .build_cartesian_2d(2048. ..length, 0. ..1024.)
         .unwrap();
     let mut modulations_chart = ChartBuilder::on(&parts[4])
-        .build_cartesian_2d(2048. ..500000., 0. ..16.)
+        .build_cartesian_2d(2048. ..length, 0. ..16.)
         .unwrap();
 
-    /*samples_chart.draw_series(
-        LineSeries::new((0..100).map(|x| (x as f64, x as f64)), &BLACK)
-    ).unwrap();*/
     let mut last_clock = 0;
     for sample in PLOT_QUEUE.pop_iter() {
         let clock = sample.clock;
@@ -202,11 +200,6 @@ fn sim_effect() {
         .max_light_lines(4)
         .draw()
         .unwrap();
-
-    /* let mut file = File::create("./bhaw.txt").unwrap();
-    for plotline in PLOT_QUEUE.pop_iter() {
-        write!(file, "{plotline:?}\n").unwrap();
-    } */
 }
 
 extern "C" fn fmod_print_callback(
