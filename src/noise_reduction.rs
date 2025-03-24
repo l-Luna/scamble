@@ -73,7 +73,7 @@ impl Dsp for NoiseReduction {
                     getter: |x| x.var_adj,
                 },
                 name: "var_adj",
-                label: "",
+                unit: "",
                 desc: "How much frequency variance is required",
             }
         ]

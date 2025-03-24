@@ -21,7 +21,7 @@ pub enum ProcessResult {
 pub struct Parameter<Dsp: ?Sized> {
     pub ty: ParameterType<Dsp>,
     pub name: &'static str,
-    pub label: &'static str,
+    pub unit: &'static str,
     pub desc: &'static str
 }
 
@@ -211,7 +211,7 @@ pub fn into_desc<D: Dsp>() -> FMOD_DSP_DESCRIPTION {
                 _ => FMOD_DSP_PARAMETER_TYPE::FMOD_DSP_PARAMETER_TYPE_DATA
             },
             name: sanitize_str(param.name),
-            label: sanitize_str(param.label),
+            label: sanitize_str(param.unit),
             description: param_desc.into_raw(),
             __bindgen_anon_1: match &param.ty {
                 ParameterType::Float { min, max, default, .. }
