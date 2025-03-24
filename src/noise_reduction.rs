@@ -1,4 +1,4 @@
-use crate::custom_dsp::{Dsp, DspType, ProcessResult};
+use crate::custom_dsp::{Dsp, DspType, Parameter, ParameterType, ProcessResult};
 use circular_buffer::CircularBuffer;
 use realfft::num_complex::Complex;
 use realfft::num_traits::Zero;
@@ -44,7 +44,9 @@ pub struct NoiseReduction {
     copy_right: [f32; 2048],
     // preserve buffers for plotting during tests
     #[cfg(test)]
-    preserve_freqs: [f32; 1024]
+    preserve_freqs: [f32; 1024],
+    // parameters
+    var_adj: f32
 }
 
 impl Dsp for NoiseReduction {
@@ -58,6 +60,23 @@ impl Dsp for NoiseReduction {
 
     fn ty() -> DspType {
         DspType::Effect
+    }
+
+    fn parameters() -> Vec<Parameter<Self>> {
+        vec![
+            Parameter {
+                ty: ParameterType::Float {
+                    min: 0.1,
+                    max: 3.0,
+                    default: 1.7,
+                    setter: |value, dsp| { dsp.var_adj = value },
+                    getter: |x| x.var_adj,
+                },
+                name: "var_adj",
+                label: "",
+                desc: "How much frequency variance is required",
+            }
+        ]
     }
 
     fn create() -> Self {
@@ -78,7 +97,9 @@ impl Dsp for NoiseReduction {
             copy_left: [0.; 2048],
             copy_right: [0.; 2048],
             #[cfg(test)]
-            preserve_freqs: [0.; 1024]
+            preserve_freqs: [0.; 1024],
+
+            var_adj: 1.7
         }
     }
 
@@ -203,7 +224,8 @@ impl Dsp for NoiseReduction {
                 // normalize (part 1)
                 self.out_left[i] /= ADJ;
                 // reduce with variance
-                self.out_left[i] *= (VAR_ADJ - variance.log2().clamp(0., VAR_ADJ)) / VAR_ADJ;
+                let v = self.var_adj;
+                self.out_left[i] *= (v - variance.log2().clamp(0., v)) / v;
             }
 
             #[cfg(test)]
