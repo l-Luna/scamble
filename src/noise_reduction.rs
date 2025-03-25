@@ -1,3 +1,4 @@
+use std::ops::Div;
 use crate::custom_dsp::{Dsp, DspType, Parameter, ParameterType, ProcessResult};
 use circular_buffer::CircularBuffer;
 use realfft::num_complex::Complex;
@@ -5,48 +6,40 @@ use realfft::num_traits::Zero;
 use realfft::{ComplexToReal, RealFftPlanner, RealToComplex};
 use std::sync::Arc;
 
-#[cfg(test)]
-use crate::simulate::NRPlot;
-
-// (unused) FFT window
-// static FFT_HANN_WINDOW: LazyLock<[f32; 2048]> = LazyLock::new(hann_window);
-
 // sqrt(2048)
 const ADJ: f32 = 45.25483399593904156165403917471;
 
-// "how much" low variance signals are reduced
-const VAR_ADJ: f32 = 1.6;
-
-// "how quickly" a signal is considered persistent
-const PERSIST_FACT: f32 = 0.03;
+const BUFLEN: usize = 4096;
+const HBUFLEN: usize = BUFLEN / 2 + 1;
 
 pub struct NoiseReduction {
     // previous window of buffered values
-    delay_left: CircularBuffer<2048, f32>,
-    delay_right: CircularBuffer<2048, f32>,
+    delay_left: CircularBuffer<BUFLEN, f32>,
+    delay_right: CircularBuffer<BUFLEN, f32>,
     // accumulated persistent frequencies
-    persistent_freqs: [f32; 1025],
-    // frequencies over time, for modulation checking
-    accumulated_freqs: [CircularBuffer<256, f32>; 16],
+    persistent_freqs: [f32; HBUFLEN],
+    // ramp up volume after noise gate is released
+    was_gated: bool,
     // FFT instances
     dft_fwd: Arc<dyn RealToComplex<f32>>,
     dft_bwd: Arc<dyn ComplexToReal<f32>>,
-    dft_mini_fwd: Arc<dyn RealToComplex<f32>>,
     // keep track of previous silence for should-process
     silence: usize,
     // internal clock for plotting
     clock: usize,
     // buffers
-    scratch: [Complex<f32>; 2048],
-    out_left: [Complex<f32>; 1025],
-    out_right: [Complex<f32>; 1025],
-    copy_left: [f32; 2048],
-    copy_right: [f32; 2048],
-    // preserve buffers for plotting during tests
-    #[cfg(test)]
-    preserve_freqs: [f32; 1024],
+    scratch: [Complex<f32>; BUFLEN],
+    out_left: [Complex<f32>; HBUFLEN],
+    out_right: [Complex<f32>; HBUFLEN],
+    copy_left: [f32; BUFLEN],
+    copy_right: [f32; BUFLEN],
     // parameters
-    var_adj: f32
+    var_enable: bool,
+    var_adj: f32,
+    persist_enable: bool,
+    persist_lerp: f32,
+    noise_gate_enable: bool,
+    noise_gate_req: f32
 }
 
 impl Dsp for NoiseReduction {
@@ -69,13 +62,70 @@ impl Dsp for NoiseReduction {
                     min: 0.1,
                     max: 3.0,
                     default: 1.7,
-                    setter: |value, dsp| { dsp.var_adj = value },
                     getter: |x| x.var_adj,
+                    setter: |value, dsp| dsp.var_adj = value,
                 },
                 name: "var_adj",
                 unit: "",
                 desc: "How much frequency variance is required",
-            }
+            },
+            Parameter {
+                ty: ParameterType::Bool {
+                    default: true,
+                    names: None,
+                    getter: |x| x.var_enable,
+                    setter: |value, dsp| dsp.var_enable = value,
+                },
+                name: "var_enable",
+                unit: "",
+                desc: "Whether frequency variance is used",
+            },
+            Parameter {
+                ty: ParameterType::Float {
+                    min: 0.01,
+                    max: 1.0,
+                    default: 0.03,
+                    getter: |x| x.persist_lerp,
+                    setter: |value, dsp| dsp.persist_lerp = value,
+                },
+                name: "persist_lerp",
+                unit: "per sec",
+                desc: "How quickly a frequency is considered persistent",
+            },
+            Parameter {
+                ty: ParameterType::Bool {
+                    default: true,
+                    names: None,
+                    getter: |x| x.persist_enable,
+                    setter: |value, dsp| dsp.persist_enable = value,
+                },
+                name: "persist_enable",
+                unit: "",
+                desc: "Whether persistent frequencies are analyzed",
+            },
+            Parameter {
+                ty: ParameterType::Bool {
+                    default: true,
+                    names: None,
+                    getter: |x| x.noise_gate_enable,
+                    setter: |value, dsp| dsp.noise_gate_enable = value,
+                },
+                name: "noise_gate_en",
+                unit: "",
+                desc: "Whether to apply a noise gate",
+            },
+            Parameter {
+                ty: ParameterType::Float {
+                    min: -60.,
+                    max: 20.,
+                    default: -35.,
+                    getter: |x| x.noise_gate_req,
+                    setter: |value, dsp| dsp.noise_gate_req = value,
+                },
+                name: "noise_gate_req",
+                unit: "dB",
+                desc: "The minimum volume for the noise gate",
+            },
         ]
     }
 
@@ -84,22 +134,23 @@ impl Dsp for NoiseReduction {
         NoiseReduction {
             delay_left: Default::default(),
             delay_right: Default::default(),
-            persistent_freqs: [0.; 1025],
-            accumulated_freqs: Default::default(),
-            dft_fwd: planner.plan_fft_forward(2048),
-            dft_bwd: planner.plan_fft_inverse(2048),
-            dft_mini_fwd: planner.plan_fft_forward(256),
+            persistent_freqs: [0.; HBUFLEN],
+            was_gated: false,
+            dft_fwd: planner.plan_fft_forward(BUFLEN),
+            dft_bwd: planner.plan_fft_inverse(BUFLEN),
             silence: 0,
             clock: 0,
-            scratch: [Complex::zero(); 2048],
-            out_left: [Complex::zero(); 1025],
-            out_right: [Complex::zero(); 1025],
-            copy_left: [0.; 2048],
-            copy_right: [0.; 2048],
-            #[cfg(test)]
-            preserve_freqs: [0.; 1024],
-
-            var_adj: 1.7
+            scratch: [Complex::zero(); BUFLEN],
+            out_left: [Complex::zero(); HBUFLEN],
+            out_right: [Complex::zero(); HBUFLEN],
+            copy_left: [0.; BUFLEN],
+            copy_right: [0.; BUFLEN],
+            var_enable: true,
+            var_adj: 1.7,
+            persist_enable: true,
+            persist_lerp: 0.03,
+            noise_gate_enable: true,
+            noise_gate_req: -18.,
         }
     }
 
@@ -107,7 +158,7 @@ impl Dsp for NoiseReduction {
         self.delay_left.clear();
         self.delay_right.clear();
         self.persistent_freqs.fill(0.);
-        self.accumulated_freqs.fill(Default::default());
+        self.was_gated = false;
         self.silence = 0;
         self.clock = 0;
     }
@@ -115,7 +166,7 @@ impl Dsp for NoiseReduction {
     fn should_process(&mut self, idle: bool, incoming_length: usize) -> ProcessResult {
         if idle {
             self.silence += incoming_length;
-            if self.silence >= 2048 {
+            if self.silence >= BUFLEN {
                 ProcessResult::SkipSilent
             } else {
                 ProcessResult::Continue
@@ -149,19 +200,17 @@ impl Dsp for NoiseReduction {
             copy_contiguous(&self.delay_left, &mut self.copy_left);
             copy_contiguous(&self.delay_right, &mut self.copy_right);
 
-            // calculate max amplitude of recent untouched data for later
-            let max_amp = self.copy_left[1024..]
-                .iter()
-                .map(|x| x.abs())
-                .max_by(|x, y| x.total_cmp(y))
-                .unwrap();
-
-            // apply window to reduce artefacting (unused)
-            /*let window = LazyLock::force(&FFT_HANN_WINDOW);
-            for i in 0..2048 {
-                self.copy_left[i] *= window[i];
-                self.copy_right[i] *= window[i];
-            }*/
+            // calculate RMS of amplitude to use later
+            let rms = if self.noise_gate_enable {
+                self.copy_left
+                    .iter()
+                    .map(|x| x * x)
+                    .sum::<f32>()
+                    .div(BUFLEN as f32)
+                    .sqrt()
+            } else {
+                0.1
+            };
 
             // apply forward FFTs
             self.dft_fwd
@@ -171,36 +220,25 @@ impl Dsp for NoiseReduction {
                 .process_with_scratch(&mut self.copy_right, &mut self.out_right, &mut self.scratch)
                 .unwrap();
 
-            // hold onto unaltered frequencies for plotting
-            #[cfg(test)] {
-                for i in 0..1024 {
-                    self.preserve_freqs[i] = self.out_left[i].norm().min(self.out_right[i].norm());
-                }
-            }
-
             // processing...
-            let n = self.out_left.len();
 
             // find variance of frequencies; noise tends have very low variance compared to speech
             // adjust by first value to keep numeric stability
-            let offset = (self.out_left[0] + self.out_right[0]).norm() / 2.;
             let mut mean = 0.;
             let mut variance = 0.;
-            for i in 0..n {
-                let x = (self.out_left[i] + self.out_right[i]).norm() / 2. - offset;
-                mean += x;
-                variance += x * x;
-            }
-            mean /= n as f32;
-            variance = ((variance / n as f32) - mean * mean).sqrt();
-
-            // push new accumulated frequency entry
-            for i in 0..16 {
-                self.accumulated_freqs[i].push_back(0.);
+            if self.var_enable {
+                let offset = (self.out_left[0] + self.out_right[0]).norm() / 2.;
+                for i in 0..HBUFLEN {
+                    let x = (self.out_left[i] + self.out_right[i]).norm() / 2. - offset;
+                    mean += x;
+                    variance += x * x;
+                }
+                mean /= HBUFLEN as f32;
+                variance = ((variance / HBUFLEN as f32) - mean * mean).sqrt();
             }
 
             // apply filtering
-            for i in 0..n {
+            for i in 0..HBUFLEN {
                 // take the minimum over each channel for each element
                 let left_max = self.out_left[i].norm_sqr() > self.out_right[i].norm_sqr();
                 self.out_left[i] = if left_max {
@@ -209,83 +247,65 @@ impl Dsp for NoiseReduction {
                     self.out_left[i]
                 };
 
-                // update accumulated frequencies
-                let norm = self.out_left[i].norm();
-                let buffer = &mut self.accumulated_freqs[(i / 64).min(15)];
-                let blen = buffer.len() - 1; // lifetime shenanigans
-                buffer[blen] += norm;
-
                 // update persistent frequencies
-                self.persistent_freqs[i] =
-                    lerp(self.persistent_freqs[i].min(norm), norm, PERSIST_FACT);
-                // then cut them out
-                self.out_left[i] = sub_real_cmplx(self.persistent_freqs[i], self.out_left[i]);
+                if self.persist_enable {
+                    let norm = self.out_left[i].norm();
+                    self.persistent_freqs[i] =
+                        lerp(self.persistent_freqs[i].min(norm), norm, self.persist_lerp);
+                    // then cut them out
+                    self.out_left[i] = sub_real_cmplx(self.persistent_freqs[i], self.out_left[i]);
+                } else {
+                    self.persistent_freqs[i] = 0.;
+                }
 
                 // normalize (part 1)
                 self.out_left[i] /= ADJ;
-                // reduce with variance
-                let v = self.var_adj;
-                self.out_left[i] *= (v - variance.log2().clamp(0., v)) / v;
-            }
 
-            #[cfg(test)]
-            let mut md = [[0.; 128]; 16];
-
-            // reuse copy_right and out_right for frequency modulation
-            for i in 0..16 {
-                let mut buf = [0.; 256];
-                copy_contiguous(&self.accumulated_freqs[i], &mut buf);
-                self.dft_mini_fwd.process_with_scratch(&mut buf, &mut self.out_right[..129], &mut self.scratch).unwrap();
-                #[cfg(test)] {
-                    for (j, it) in self.out_right[..128].iter().enumerate(){
-                        md[i][j] = it.norm();
-                    }
+                if self.var_enable {
+                    // reduce with variance
+                    let v = self.var_adj;
+                    self.out_left[i] *= (v - variance.log2().clamp(0., v)) / v;
                 }
             }
 
             // just in case
             self.out_left[0].im = 0.;
-            self.out_left[self.out_left.len() - 1].im = 0.;
+            self.out_left[HBUFLEN - 1].im = 0.;
 
             // apply backwards FFT
             self.dft_bwd
                 .process_with_scratch(&mut self.out_left, &mut self.copy_left, &mut self.scratch)
                 .unwrap();
 
-            // add a minimum value to audio volume
-            let adj_amp = max_amp.log10() + 1.8;
-            if adj_amp < 0. {
-                for i in 0..self.copy_left.len() {
-                    self.copy_left[i] /= 2.0 + adj_amp.abs();
+            // apply noise gate
+            let adj_amp = 20. * rms.log10();
+            if self.noise_gate_enable && adj_amp < self.noise_gate_req {
+                if self.was_gated {
+                    for i in 0..BUFLEN {
+                        self.copy_left[i] /= 8.;
+                    }
+                } else {
+                    for i in 0..BUFLEN {
+                        self.copy_left[i] /= 1. + 7. * (i as f32 / BUFLEN as f32);
+                    }
+                }
+                self.was_gated = true;
+            } else if self.was_gated {
+                for i in 0..BUFLEN {
+                    self.copy_left[i] /= 1. + 7. * ((BUFLEN - i) as f32 / BUFLEN as f32);
                 }
             }
 
             // normalize outputs (part 2)
             let out_len = out_data.len() / out_channels;
             for i in 0..out_len {
-                self.copy_left[self.copy_left.len() - out_len + i] /= ADJ;
+                self.copy_left[BUFLEN - out_len + i] /= ADJ;
             }
 
             // write to outputs
             for i in 0..out_len {
-                out_data[i * 2] = self.copy_left[self.copy_left.len() - out_len + i];
-                out_data[i * 2 + 1] = self.copy_left[self.copy_left.len() - out_len + i];
-            }
-
-            #[cfg(test)] {
-                let mut dl = [0.; 2048]; copy_contiguous(&self.delay_left, &mut dl);
-                let mut dr = [0.; 2048]; copy_contiguous(&self.delay_right, &mut dr);
-                let mut pf = [0.; 1024]; pf.copy_from_slice(&self.persistent_freqs[..1024]);
-
-                crate::simulate::PLOT_QUEUE.push(NRPlot {
-                    clock: self.clock,
-                    delay_left: dl,
-                    delay_right: dr,
-                    freqs: self.preserve_freqs,
-                    freq_var: variance,
-                    persistent_freqs: pf,
-                    modulations: md,
-                });
+                out_data[i * 2] = self.copy_left[BUFLEN - out_len + i];
+                out_data[i * 2 + 1] = self.copy_left[BUFLEN - out_len + i];
             }
         }
     }
@@ -305,25 +325,3 @@ fn sub_real_cmplx(real: f32, cmplx: Complex<f32>) -> Complex<f32> {
     let (mag, arg) = cmplx.to_polar();
     Complex::from_polar(mag - real, arg)
 }
-
-// (unused) sum a range in the frequency spectrum
-/*fn window_sum(slice: &[Complex<f32>], at: usize, radius: usize) -> f32 {
-    slice[at.saturating_sub(radius)..(at + radius).min(slice.len())]
-        .iter()
-        .map(|it| it.norm_sqr())
-        .sum()
-}*/
-
-// (unused) FFT window
-/*const WINDOW_TAPER: usize = 1;
-fn hann_window() -> [f32; 2048] {
-    let mut arr = [1.; 2048];
-    for i in 0..WINDOW_TAPER {
-        arr[i] = 0.5 * (1. - f32::cos(2. * f32::PI() * (i as f32) / (WINDOW_TAPER as f32 * 2.)));
-    }
-    for i in 0..WINDOW_TAPER {
-        arr[2047 - i] = 0.5 * (1. - f32::cos(2. * f32::PI() * (i as f32) / (WINDOW_TAPER as f32 * 2.)));
-    }
-    println!("arr={arr:?}");
-    arr
-}*/

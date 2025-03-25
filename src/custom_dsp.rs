@@ -1,7 +1,8 @@
 use crate::raw_bindings::FMOD_RESULT::{FMOD_ERR_DSP_DONTPROCESS, FMOD_ERR_DSP_SILENCE, FMOD_ERR_PLUGIN};
-use crate::raw_bindings::{FMOD_DSP_PARAMETER_DESC__bindgen_ty_1, FMOD_BOOL, FMOD_CHANNELMASK, FMOD_DSP_BUFFER_ARRAY, FMOD_DSP_DESCRIPTION, FMOD_DSP_PARAMETER_DESC, FMOD_DSP_PARAMETER_DESC_BOOL, FMOD_DSP_PARAMETER_DESC_DATA, FMOD_DSP_PARAMETER_DESC_FLOAT, FMOD_DSP_PARAMETER_DESC_INT, FMOD_DSP_PARAMETER_FLOAT_MAPPING, FMOD_DSP_PARAMETER_FLOAT_MAPPING_PIECEWISE_LINEAR, FMOD_DSP_PARAMETER_FLOAT_MAPPING_TYPE, FMOD_DSP_PARAMETER_TYPE, FMOD_DSP_PROCESS_OPERATION, FMOD_DSP_STATE, FMOD_MEMORY_NORMAL, FMOD_PLUGIN_SDK_VERSION, FMOD_RESULT, FMOD_RESULT::FMOD_OK, FMOD_SPEAKERMODE};
-use std::ffi::{c_char, c_int, c_uint, c_void, CString};
+use crate::raw_bindings::{FMOD_DSP_PARAMETER_DESC__bindgen_ty_1, FMOD_BOOL, FMOD_CHANNELMASK, FMOD_DEBUG_FLAGS, FMOD_DEBUG_LEVEL_ERROR, FMOD_DSP_BUFFER_ARRAY, FMOD_DSP_DESCRIPTION, FMOD_DSP_PARAMETER_DESC, FMOD_DSP_PARAMETER_DESC_BOOL, FMOD_DSP_PARAMETER_DESC_DATA, FMOD_DSP_PARAMETER_DESC_FLOAT, FMOD_DSP_PARAMETER_DESC_INT, FMOD_DSP_PARAMETER_FLOAT_MAPPING, FMOD_DSP_PARAMETER_FLOAT_MAPPING_PIECEWISE_LINEAR, FMOD_DSP_PARAMETER_FLOAT_MAPPING_TYPE, FMOD_DSP_PARAMETER_TYPE, FMOD_DSP_PROCESS_OPERATION, FMOD_DSP_STATE, FMOD_MEMORY_NORMAL, FMOD_PLUGIN_SDK_VERSION, FMOD_RESULT, FMOD_RESULT::FMOD_OK, FMOD_SPEAKERMODE};
+use std::ffi::{c_char, c_int, c_uint, c_void, CStr, CString};
 use std::{panic, ptr};
+use std::any::Any;
 use std::ptr::{slice_from_raw_parts, slice_from_raw_parts_mut};
 use std::str::FromStr;
 
@@ -348,6 +349,29 @@ fn sanitize_str<const N: usize>(mut s: &str) -> [c_char; N]{
 
 static DBGSTR: &'static str = "Rust DSP\0";
 
+unsafe fn log_err(str: &str, s: *mut FMOD_DSP_STATE) {
+    unsafe {
+        let cstr = CString::from_str(str).unwrap();
+        (*(*s).functions).log.unwrap()(
+            FMOD_DEBUG_LEVEL_ERROR,
+            DBGSTR.as_ptr() as *const _,
+            -1,
+            DBGSTR.as_ptr() as *const _,
+            cstr.as_ptr(),
+        );
+    }
+}
+
+unsafe fn handle_panic(e: Box<dyn Any + Send>, s: *mut FMOD_DSP_STATE) {
+    unsafe {
+        if let Ok(str) = e.downcast::<&str>() {
+            log_err(*str, s);
+        } else {
+            log_err("Panicked without log!!", s);
+        }
+    }
+}
+
 extern "C" fn create_callback<D: Dsp>(dsp_state: *mut FMOD_DSP_STATE) -> FMOD_RESULT {
     let data = D::create();
     unsafe {
@@ -380,7 +404,10 @@ extern "C" fn reset_callback<D: Dsp>(dsp_state: *mut FMOD_DSP_STATE) -> FMOD_RES
         });
         match result{
             Ok(_) => FMOD_OK,
-            Err(_) => FMOD_ERR_PLUGIN
+            Err(e) => {
+                handle_panic(e, dsp_state);
+                FMOD_ERR_PLUGIN
+            }
         }
     }
 }
@@ -404,7 +431,10 @@ extern "C" fn should_process_callback<D: Dsp>(
         });
         match result{
             Ok(_) => FMOD_OK,
-            Err(_) => FMOD_ERR_PLUGIN
+            Err(e) => {
+                handle_panic(e, dsp_state);
+                FMOD_ERR_PLUGIN
+            }
         }
     }
 }
@@ -429,7 +459,10 @@ extern "C" fn read_callback<D: Dsp>(
         });
         match result{
             Ok(_) => FMOD_OK,
-            Err(_) => FMOD_ERR_PLUGIN
+            Err(e) => {
+                handle_panic(e, dsp_state);
+                FMOD_ERR_PLUGIN
+            }
         }
     }
 }
@@ -469,7 +502,10 @@ extern "C" fn process_callback<D: Dsp>(
                 FMOD_OK
             }
         });
-        proc.unwrap_or_else(|_| FMOD_ERR_PLUGIN)
+        proc.unwrap_or_else(|e| {
+            handle_panic(e, dsp_state);
+            FMOD_ERR_PLUGIN
+        })
     }
 }
 
@@ -480,13 +516,14 @@ extern "C" fn set_param_float_callback<D: Dsp>(
 ) -> FMOD_RESULT {
     let data = unsafe { &mut *((*dsp_state).plugindata as *mut D) };
     let params = D::parameters();
-    if params.len() <= index as usize {
+    if (index as usize) < params.len() {
         let param = &params[index as usize];
         if let ParameterType::Float { setter, .. } = param.ty {
             setter(value, data);
             return FMOD_OK;
         }
     }
+    unsafe { log_err(&format!("Failed to set float parameter at index {index} (of {})", params.len()), dsp_state); }
     FMOD_ERR_PLUGIN
 }
 
@@ -498,7 +535,7 @@ extern "C" fn get_param_float_callback<D: Dsp>(
 ) -> FMOD_RESULT {
     let data = unsafe { &mut *((*dsp_state).plugindata as *mut D) };
     let params = D::parameters();
-    if params.len() <= index as usize {
+    if (index as usize) < params.len() {
         let param = &params[index as usize];
         if let ParameterType::Float { getter, .. } = param.ty {
             unsafe {
@@ -507,6 +544,7 @@ extern "C" fn get_param_float_callback<D: Dsp>(
             }
         }
     }
+    unsafe { log_err(&format!("Failed to get float parameter at index {index} (of {})", params.len()), dsp_state); }
     FMOD_ERR_PLUGIN
 }
 
@@ -517,13 +555,14 @@ extern "C" fn set_param_int_callback<D: Dsp>(
 ) -> FMOD_RESULT {
     let data = unsafe { &mut *((*dsp_state).plugindata as *mut D) };
     let params = D::parameters();
-    if params.len() <= index as usize {
+    if (index as usize) < params.len() {
         let param = &params[index as usize];
         if let ParameterType::Int { setter, .. } = param.ty {
             setter(value, data);
             return FMOD_OK;
         }
     }
+    unsafe { log_err(&format!("Failed to set int parameter at index {index} (of {})", params.len()), dsp_state); }
     FMOD_ERR_PLUGIN
 }
 
@@ -535,7 +574,7 @@ extern "C" fn get_param_int_callback<D: Dsp>(
 ) -> FMOD_RESULT {
     let data = unsafe { &mut *((*dsp_state).plugindata as *mut D) };
     let params = D::parameters();
-    if params.len() <= index as usize {
+    if (index as usize) < params.len() {
         let param = &params[index as usize];
         if let ParameterType::Int { getter, .. } = param.ty {
             unsafe {
@@ -544,6 +583,7 @@ extern "C" fn get_param_int_callback<D: Dsp>(
             }
         }
     }
+    unsafe { log_err(&format!("Failed to get int parameter at index {index} (of {})", params.len()), dsp_state); }
     FMOD_ERR_PLUGIN
 }
 
@@ -554,13 +594,14 @@ extern "C" fn set_param_bool_callback<D: Dsp>(
 ) -> FMOD_RESULT {
     let data = unsafe { &mut *((*dsp_state).plugindata as *mut D) };
     let params = D::parameters();
-    if params.len() <= index as usize {
+    if (index as usize) < params.len() {
         let param = &params[index as usize];
         if let ParameterType::Bool { setter, .. } = param.ty {
             setter(value == 1, data);
             return FMOD_OK;
         }
     }
+    unsafe { log_err(&format!("Failed to set boolean parameter at index {index} (of {})", params.len()), dsp_state); }
     FMOD_ERR_PLUGIN
 }
 
@@ -572,7 +613,7 @@ extern "C" fn get_param_bool_callback<D: Dsp>(
 ) -> FMOD_RESULT {
     let data = unsafe { &mut *((*dsp_state).plugindata as *mut D) };
     let params = D::parameters();
-    if params.len() <= index as usize {
+    if (index as usize) < params.len() {
         let param = &params[index as usize];
         if let ParameterType::Bool { getter, .. } = param.ty {
             unsafe {
@@ -581,6 +622,7 @@ extern "C" fn get_param_bool_callback<D: Dsp>(
             }
         }
     }
+    unsafe { log_err(&format!("Failed to get boolean parameter at index {index} (of {})", params.len()), dsp_state); }
     FMOD_ERR_PLUGIN
 }
 
@@ -592,7 +634,7 @@ extern "C" fn set_param_data_callback<D: Dsp>(
 ) -> FMOD_RESULT {
     let data = unsafe { &mut *((*dsp_state).plugindata as *mut D) };
     let params = D::parameters();
-    if params.len() <= index as usize {
+    if (index as usize) < params.len() {
         let param = &params[index as usize];
         if let ParameterType::Data { setter, .. } = param.ty {
             unsafe {
@@ -602,6 +644,7 @@ extern "C" fn set_param_data_callback<D: Dsp>(
             return FMOD_OK;
         }
     }
+    unsafe { log_err(&format!("Failed to set data parameter at index {index} (of {})", params.len()), dsp_state); }
     FMOD_ERR_PLUGIN
 }
 
@@ -614,7 +657,7 @@ extern "C" fn get_param_data_callback<D: Dsp>(
 ) -> FMOD_RESULT {
     let data = unsafe { &mut *((*dsp_state).plugindata as *mut D) };
     let params = D::parameters();
-    if params.len() <= index as usize {
+    if (index as usize) < params.len() {
         let param = &params[index as usize];
         if let ParameterType::Data { getter, .. } = param.ty {
             let (c_value, c_desc) = getter(&*data);
@@ -629,5 +672,6 @@ extern "C" fn get_param_data_callback<D: Dsp>(
             }
         }
     }
+    unsafe { log_err(&format!("Failed to get data parameter at index {index} (of {})", params.len()), dsp_state); }
     FMOD_ERR_PLUGIN
 }
