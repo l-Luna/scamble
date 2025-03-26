@@ -1,6 +1,6 @@
-use crate::raw_bindings::FMOD_RESULT::{FMOD_ERR_DSP_DONTPROCESS, FMOD_ERR_DSP_SILENCE, FMOD_ERR_PLUGIN};
-use crate::raw_bindings::{FMOD_DSP_PARAMETER_DESC__bindgen_ty_1, FMOD_BOOL, FMOD_CHANNELMASK, FMOD_DEBUG_FLAGS, FMOD_DEBUG_LEVEL_ERROR, FMOD_DSP_BUFFER_ARRAY, FMOD_DSP_DESCRIPTION, FMOD_DSP_PARAMETER_DESC, FMOD_DSP_PARAMETER_DESC_BOOL, FMOD_DSP_PARAMETER_DESC_DATA, FMOD_DSP_PARAMETER_DESC_FLOAT, FMOD_DSP_PARAMETER_DESC_INT, FMOD_DSP_PARAMETER_FLOAT_MAPPING, FMOD_DSP_PARAMETER_FLOAT_MAPPING_PIECEWISE_LINEAR, FMOD_DSP_PARAMETER_FLOAT_MAPPING_TYPE, FMOD_DSP_PARAMETER_TYPE, FMOD_DSP_PROCESS_OPERATION, FMOD_DSP_STATE, FMOD_MEMORY_NORMAL, FMOD_PLUGIN_SDK_VERSION, FMOD_RESULT, FMOD_RESULT::FMOD_OK, FMOD_SPEAKERMODE};
-use std::ffi::{c_char, c_int, c_uint, c_void, CStr, CString};
+use crate::raw_bindings::FMOD_RESULT::{FMOD_ERR_DSP_DONTPROCESS, FMOD_ERR_DSP_SILENCE, FMOD_ERR_PLUGIN, FMOD_OK};
+use crate::raw_bindings::*;
+use std::ffi::{c_char, c_int, c_uint, c_void, CString};
 use std::{panic, ptr};
 use std::any::Any;
 use std::ptr::{slice_from_raw_parts, slice_from_raw_parts_mut};
@@ -58,7 +58,10 @@ pub enum ParameterType<Dsp: ?Sized> {
     // TODO: accompanying data structures
     OverallGain,
     _3DAttrs,
-    Sidechain,
+    Sidechain {
+        setter: fn(bool, &mut Dsp),
+        getter: fn(&Dsp) -> bool
+    },
     Fft,
     _Multi3DAttrs,
     AttenuationRange,
@@ -275,7 +278,7 @@ pub fn into_desc<D: Dsp>() -> FMOD_DSP_DESCRIPTION {
                         datatype: FMOD_DSP_PARAMETER_DATA_TYPE_3DATTRIBUTES as i32
                     }
                 } },
-                ParameterType::Sidechain
+                ParameterType::Sidechain { .. }
                     => { FMOD_DSP_PARAMETER_DESC__bindgen_ty_1 { datadesc: FMOD_DSP_PARAMETER_DESC_DATA {
                         datatype: FMOD_DSP_PARAMETER_DATA_TYPE_SIDECHAIN as i32
                     }
@@ -348,6 +351,21 @@ fn sanitize_str<const N: usize>(mut s: &str) -> [c_char; N]{
 }
 
 static DBGSTR: &'static str = "Rust DSP\0";
+
+// SAFETY: all accesses must happen from `Dsp::read`, which executes on the mixer thread only.
+static mut CUR_STATE: *mut FMOD_DSP_STATE = ptr::null_mut();
+static mut IN_LENGTH: usize = 0;
+
+pub fn with_sidechain<T>(f: impl FnOnce(Option<(&[f32], usize)>) -> T) -> T{
+    let cur_state = unsafe { CUR_STATE };
+    if cur_state.is_null() {
+        f(None)
+    } else {
+        let (sidechain_ptr, sidechain_channels) = unsafe { ((*cur_state).sidechaindata, (*cur_state).sidechainchannels) };
+        let slice = unsafe { &*slice_from_raw_parts(sidechain_ptr, IN_LENGTH) };
+        f(Some((slice, sidechain_channels as usize)))
+    }
+}
 
 unsafe fn log_err(str: &str, s: *mut FMOD_DSP_STATE) {
     unsafe {
@@ -476,6 +494,9 @@ extern "C" fn process_callback<D: Dsp>(
     op: FMOD_DSP_PROCESS_OPERATION,
 ) -> FMOD_RESULT {
     unsafe {
+        CUR_STATE = dsp_state;
+        IN_LENGTH = length as usize;
+
         let proc = panic::catch_unwind(|| {
             let data = &mut *((*dsp_state).plugindata as *mut D);
             if op == FMOD_DSP_PROCESS_OPERATION::FMOD_DSP_PROCESS_QUERY {
@@ -502,6 +523,10 @@ extern "C" fn process_callback<D: Dsp>(
                 FMOD_OK
             }
         });
+
+        CUR_STATE = ptr::null_mut();
+        IN_LENGTH = 0;
+
         proc.unwrap_or_else(|e| {
             handle_panic(e, dsp_state);
             FMOD_ERR_PLUGIN
@@ -643,6 +668,13 @@ extern "C" fn set_param_data_callback<D: Dsp>(
             }
             return FMOD_OK;
         }
+        if let ParameterType::Sidechain { setter, .. } = param.ty {
+            unsafe {
+                let i = (*(value as *mut FMOD_DSP_PARAMETER_SIDECHAIN)).sidechainenable;
+                setter(i == 1, data);
+            }
+            return FMOD_OK;
+        }
     }
     unsafe { log_err(&format!("Failed to set data parameter at index {index} (of {})", params.len()), dsp_state); }
     FMOD_ERR_PLUGIN
@@ -668,6 +700,12 @@ extern "C" fn get_param_data_callback<D: Dsp>(
                 }
                 *value = c_value.as_ptr() as *mut _;
                 *length = c_value.len() as c_uint;
+                return FMOD_OK;
+            }
+        }
+        if let ParameterType::Sidechain { getter, .. } = param.ty {
+            unsafe {
+                (*(value as *mut FMOD_DSP_PARAMETER_SIDECHAIN)).sidechainenable = if getter(data) { 1 } else { 0 };
                 return FMOD_OK;
             }
         }

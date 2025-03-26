@@ -2,6 +2,7 @@
 #![feature(portable_simd)]
 
 use crate::dynamics::LocalDynamics;
+use crate::exact::ExactOut;
 use crate::noise_reduction::NoiseReduction;
 use crate::windy::WindySynth;
 
@@ -15,5 +16,6 @@ pub mod custom_dsp;
 mod result;
 mod dynamics;
 mod noise_reduction;
+mod exact;
 
-expose_dsp_list!(WindySynth, LocalDynamics, NoiseReduction);
+expose_dsp_list!(WindySynth, LocalDynamics, NoiseReduction, ExactOut);
