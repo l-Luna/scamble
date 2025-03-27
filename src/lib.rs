@@ -3,6 +3,7 @@
 
 use crate::dynamics::LocalDynamics;
 use crate::exact::ExactOut;
+use crate::fantasy::Fantasy;
 use crate::noise_reduction::NoiseReduction;
 use crate::windy::WindySynth;
 
@@ -17,5 +18,7 @@ mod result;
 mod dynamics;
 mod noise_reduction;
 mod exact;
+mod fantasy;
+mod vocoder;
 
-expose_dsp_list!(WindySynth, LocalDynamics, NoiseReduction, ExactOut);
+expose_dsp_list!(WindySynth, LocalDynamics, NoiseReduction, ExactOut, Fantasy);
