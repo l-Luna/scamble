@@ -33,6 +33,7 @@ pub struct NoiseReduction {
     out_right: [Complex<f32>; HBUFLEN],
     copy_left: [f32; BUFLEN],
     copy_right: [f32; BUFLEN],
+    residual: [f32; BUFLEN / 2],
     // parameters
     var_enable: bool,
     var_adj: f32,
@@ -118,7 +119,7 @@ impl Dsp for NoiseReduction {
                 ty: ParameterType::Float {
                     min: -60.,
                     max: 20.,
-                    default: -35.,
+                    default: -45.,
                     getter: |x| x.noise_gate_req,
                     setter: |value, dsp| dsp.noise_gate_req = value,
                 },
@@ -145,12 +146,13 @@ impl Dsp for NoiseReduction {
             out_right: [Complex::zero(); HBUFLEN],
             copy_left: [0.; BUFLEN],
             copy_right: [0.; BUFLEN],
+            residual: [0.; BUFLEN / 2],
             var_enable: true,
             var_adj: 1.7,
             persist_enable: true,
             persist_lerp: 0.03,
             noise_gate_enable: true,
-            noise_gate_req: -18.,
+            noise_gate_req: -45.,
         }
     }
 
@@ -159,6 +161,7 @@ impl Dsp for NoiseReduction {
         self.delay_right.clear();
         self.persistent_freqs.fill(0.);
         self.was_gated = false;
+        self.residual.fill(0.);
         self.silence = 0;
         self.clock = 0;
     }
@@ -298,15 +301,21 @@ impl Dsp for NoiseReduction {
 
             // normalize outputs (part 2)
             let out_len = out_data.len() / out_channels;
-            for i in 0..out_len {
-                self.copy_left[BUFLEN - out_len + i] /= ADJ;
+            for i in 0..BUFLEN {
+                self.copy_left[i] /= ADJ;
             }
 
             // write to outputs
             for i in 0..out_len {
-                out_data[i * 2] = self.copy_left[BUFLEN - out_len + i];
-                out_data[i * 2 + 1] = self.copy_left[BUFLEN - out_len + i];
+                let new = self.copy_left[BUFLEN - (out_len * 2) + i];
+                let old = self.residual[i];
+                let it = interp(old, new, i, out_len);
+                out_data[i * 2] = it;
+                out_data[i * 2 + 1] = it;
             }
+
+            // update residual
+            self.residual[..out_len].copy_from_slice(&self.copy_left[BUFLEN - out_len..]);
         }
     }
 }
@@ -324,4 +333,9 @@ fn lerp(from: f32, to: f32, fact: f32) -> f32 {
 fn sub_real_cmplx(real: f32, cmplx: Complex<f32>) -> Complex<f32> {
     let (mag, arg) = cmplx.to_polar();
     Complex::from_polar(mag - real, arg)
+}
+
+fn interp(x: f32, y: f32, i: usize, l: usize) -> f32 {
+    let r = i as f32 / (l - 1) as f32;
+    (1. - r) * x + r * y
 }
