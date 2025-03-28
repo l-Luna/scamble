@@ -1,10 +1,12 @@
 #![feature(macro_metavar_expr)]
 #![feature(portable_simd)]
+#![feature(panic_payload_as_str)]
 
 use crate::dynamics::LocalDynamics;
 use crate::exact::ExactOut;
 use crate::fantasy::Fantasy;
 use crate::noise_reduction::NoiseReduction;
+use crate::vocoder::Vocoder;
 use crate::windy::WindySynth;
 
 pub mod fmod;
@@ -21,4 +23,4 @@ mod exact;
 mod fantasy;
 mod vocoder;
 
-expose_dsp_list!(WindySynth, LocalDynamics, NoiseReduction, ExactOut, Fantasy);
+expose_dsp_list!(WindySynth, LocalDynamics, NoiseReduction, ExactOut, Fantasy, Vocoder);

@@ -198,6 +198,27 @@ pub(crate) use expose_dsp_list;
 use crate::raw_bindings::FMOD_DSP_PARAMETER_DATA_TYPE::{FMOD_DSP_PARAMETER_DATA_TYPE_3DATTRIBUTES, FMOD_DSP_PARAMETER_DATA_TYPE_3DATTRIBUTES_MULTI, FMOD_DSP_PARAMETER_DATA_TYPE_ATTENUATION_RANGE, FMOD_DSP_PARAMETER_DATA_TYPE_DYNAMIC_RESPONSE, FMOD_DSP_PARAMETER_DATA_TYPE_FFT, FMOD_DSP_PARAMETER_DATA_TYPE_OVERALLGAIN, FMOD_DSP_PARAMETER_DATA_TYPE_SIDECHAIN, FMOD_DSP_PARAMETER_DATA_TYPE_USER};
 
 pub fn into_desc<D: Dsp>() -> FMOD_DSP_DESCRIPTION {
+    std::panic::set_hook(Box::new(|it| {
+        let mut desc = String::new();
+        desc.push_str("Panic");
+        if let Some(payload) = it.payload_as_str() {
+            desc.push_str(": ");
+            desc.push_str(payload);
+        }
+        if let Some(loc) = it.location() {
+            desc.push_str("\n    at: ");
+            desc.push_str(&loc.to_string());
+        }
+        let state = unsafe { CUR_STATE };
+        if !state.is_null() {
+            unsafe {
+                log_err(&desc, state);
+            }
+        } else {
+            eprintln!("{desc}\nOutside a DSP callback!");
+        }
+    }));
+
     // name sanitization
     let name = sanitize_str(D::name());
     // buffer counts
@@ -380,7 +401,7 @@ unsafe fn log_err(str: &str, s: *mut FMOD_DSP_STATE) {
     }
 }
 
-unsafe fn handle_panic(e: Box<dyn Any + Send>, s: *mut FMOD_DSP_STATE) {
+/*unsafe fn handle_panic(e: Box<dyn Any + Send>, s: *mut FMOD_DSP_STATE) {
     unsafe {
         if let Ok(str) = e.downcast::<&str>() {
             log_err(*str, s);
@@ -388,7 +409,7 @@ unsafe fn handle_panic(e: Box<dyn Any + Send>, s: *mut FMOD_DSP_STATE) {
             log_err("Panicked without log!!", s);
         }
     }
-}
+}*/
 
 extern "C" fn create_callback<D: Dsp>(dsp_state: *mut FMOD_DSP_STATE) -> FMOD_RESULT {
     let data = D::create();
@@ -416,14 +437,19 @@ extern "C" fn release_callback<D: Dsp>(dsp_state: *mut FMOD_DSP_STATE) -> FMOD_R
 
 extern "C" fn reset_callback<D: Dsp>(dsp_state: *mut FMOD_DSP_STATE) -> FMOD_RESULT {
     unsafe {
+        CUR_STATE = dsp_state;
+        
         let result = panic::catch_unwind(|| {
             let data = &mut *((*dsp_state).plugindata as *mut D);
             data.reset();
         });
+
+        CUR_STATE = ptr::null_mut();
+        
         match result{
             Ok(_) => FMOD_OK,
             Err(e) => {
-                handle_panic(e, dsp_state);
+                // handle_panic(e, dsp_state);
                 FMOD_ERR_PLUGIN
             }
         }
@@ -439,6 +465,8 @@ extern "C" fn should_process_callback<D: Dsp>(
     _: FMOD_SPEAKERMODE,
 ) -> FMOD_RESULT {
     unsafe {
+        CUR_STATE = dsp_state;
+        
         let result = panic::catch_unwind(|| {
             let data = &mut *((*dsp_state).plugindata as *mut D);
             match data.should_process(idle != 0, length as usize) {
@@ -447,10 +475,13 @@ extern "C" fn should_process_callback<D: Dsp>(
                 ProcessResult::SkipSilent => FMOD_ERR_DSP_SILENCE,
             }
         });
+
+        CUR_STATE = ptr::null_mut();
+        
         match result{
             Ok(_) => FMOD_OK,
             Err(e) => {
-                handle_panic(e, dsp_state);
+                // handle_panic(e, dsp_state);
                 FMOD_ERR_PLUGIN
             }
         }
@@ -466,6 +497,8 @@ extern "C" fn read_callback<D: Dsp>(
     out_channels: *mut std::os::raw::c_int,
 ) -> FMOD_RESULT {
     unsafe {
+        CUR_STATE = dsp_state;
+        
         let result = panic::catch_unwind(|| {
             let data = &mut *((*dsp_state).plugindata as *mut D);
             data.read(
@@ -475,10 +508,13 @@ extern "C" fn read_callback<D: Dsp>(
                 *out_channels as usize,
             );
         });
+        
+        CUR_STATE = ptr::null_mut();
+        
         match result{
             Ok(_) => FMOD_OK,
             Err(e) => {
-                handle_panic(e, dsp_state);
+                // handle_panic(e, dsp_state);
                 FMOD_ERR_PLUGIN
             }
         }
@@ -528,7 +564,7 @@ extern "C" fn process_callback<D: Dsp>(
         IN_LENGTH = 0;
 
         proc.unwrap_or_else(|e| {
-            handle_panic(e, dsp_state);
+            // handle_panic(e, dsp_state);
             FMOD_ERR_PLUGIN
         })
     }
