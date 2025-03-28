@@ -60,9 +60,9 @@ impl Dsp for NoiseReduction {
         vec![
             Parameter {
                 ty: ParameterType::Float {
-                    min: 0.1,
-                    max: 3.0,
-                    default: 1.7,
+                    min: 0.,
+                    max: 10.,
+                    default: 6.,
                     getter: |x| x.var_adj,
                     setter: |value, dsp| dsp.var_adj = value,
                 },
@@ -148,7 +148,7 @@ impl Dsp for NoiseReduction {
             copy_right: [0.; BUFLEN],
             residual: [0.; BUFLEN / 2],
             var_enable: true,
-            var_adj: 1.7,
+            var_adj: 6.,
             persist_enable: true,
             persist_lerp: 0.03,
             noise_gate_enable: true,
@@ -191,11 +191,18 @@ impl Dsp for NoiseReduction {
         in_channels: usize, // assume 2
         out_channels: usize,
     ) {
-        // extend buffers
-        self.delay_left.extend(in_data.iter().step_by(2));
-        self.delay_right.extend(in_data.iter().skip(1).step_by(2));
+        out_data.fill(0.);
 
-        self.clock += in_data.len() / 2;
+        // extend buffers
+        if in_channels == 1 {
+            self.delay_left.extend_from_slice(in_data);
+            self.delay_right.extend_from_slice(in_data);
+        } else {
+            self.delay_left.extend(in_data.iter().step_by(2));
+            self.delay_right.extend(in_data.iter().skip(1).step_by(2));
+        }
+
+        self.clock += in_data.len() / in_channels;
 
         // when we have enough data...
         if self.delay_left.is_full() && self.delay_right.is_full() {
@@ -230,9 +237,9 @@ impl Dsp for NoiseReduction {
             let mut mean = 0.;
             let mut variance = 0.;
             if self.var_enable {
-                let offset = (self.out_left[0] + self.out_right[0]).norm() / 2.;
+                let offset = (self.out_left[0].norm() + self.out_right[0].norm()) / 2.;
                 for i in 0..HBUFLEN {
-                    let x = (self.out_left[i] + self.out_right[i]).norm() / 2. - offset;
+                    let x = (self.out_left[i].norm() + self.out_right[i].norm()) / 2. - offset;
                     mean += x;
                     variance += x * x;
                 }
@@ -266,8 +273,10 @@ impl Dsp for NoiseReduction {
 
                 if self.var_enable {
                     // reduce with variance
-                    let v = self.var_adj;
-                    self.out_left[i] *= (v - variance.log2().clamp(0., v)) / v;
+                    // self.out_left[i] *= (v - variance.log2().clamp(0., v)) / v;
+                    let k = (0.4 * self.var_adj + 6.) / 5.;
+                    let x1: f32 = (2. / (1. + f32::powf(2., variance * -k.log2()))) - 1.;
+                    self.out_left[i] *= x1;
                 }
             }
 
@@ -310,8 +319,9 @@ impl Dsp for NoiseReduction {
                 let new = self.copy_left[BUFLEN - (out_len * 2) + i];
                 let old = self.residual[i];
                 let it = interp(old, new, i, out_len);
-                out_data[i * 2] = it;
-                out_data[i * 2 + 1] = it;
+                for ch in 0..out_channels {
+                    out_data[i * out_channels + ch] = it;
+                }
             }
 
             // update residual

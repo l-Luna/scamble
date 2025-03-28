@@ -131,13 +131,17 @@ impl Dsp for Vocoder {
     ) {
         out_data.fill(0.);
 
-        self.delay_signal.extend(
-            in_data
-                .iter()
-                .step_by(2)
-                .zip(in_data.iter().skip(1).step_by(2))
-                .map(|(l, r)| (l + r) / 2.),
-        );
+        if in_channels == 1 {
+            self.delay_signal.extend_from_slice(in_data);
+        } else {
+            self.delay_signal.extend(
+                in_data
+                    .iter()
+                    .step_by(2)
+                    .zip(in_data.iter().skip(1).step_by(2))
+                    .map(|(l, r)| (l + r) / 2.)
+            );
+        }
 
         if self.sidechain_enabled {
             with_sidechain(|rst| {
@@ -185,10 +189,15 @@ impl Dsp for Vocoder {
                         for i in 0..HBUFLEN {
                             let sig_i = i as i32 + self.signal_offset;
                             let car_i = i as i32 + self.carrier_offset;
-                            if sig_i < 0 || sig_i >= HBUFLEN as i32 || car_i < 0 || car_i >= HBUFLEN as i32 {
+                            if sig_i < 0
+                                || sig_i >= HBUFLEN as i32
+                                || car_i < 0
+                                || car_i >= HBUFLEN as i32
+                            {
                                 self.out_signal[i] = Complex::zero();
                             } else {
-                                self.out_signal[i] = self.scratch[sig_i as usize] * self.out_carrier[car_i as usize].norm();
+                                self.out_signal[i] = self.scratch[sig_i as usize]
+                                    * self.out_carrier[car_i as usize].norm();
                             }
                         }
                         self.out_signal[0].im = 0.;

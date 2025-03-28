@@ -162,13 +162,17 @@ impl Dsp for Fantasy {
     ) {
         out_data.fill(0.);
 
-        self.delay.extend(
-            in_data
-                .iter()
-                .step_by(2)
-                .zip(in_data.iter().skip(1).step_by(2))
-                .map(|(l, r)| (l + r) / 2.),
-        );
+        if in_channels == 1 {
+            self.delay.extend_from_slice(in_data);
+        } else {
+            self.delay.extend(
+                in_data
+                    .iter()
+                    .step_by(2)
+                    .zip(in_data.iter().skip(1).step_by(2))
+                    .map(|(l, r)| (l + r) / 2.)
+            );
+        }
 
         if self.delay.is_full() {
             copy_contiguous(&self.delay, &mut self.copy);
@@ -225,8 +229,9 @@ impl Dsp for Fantasy {
             let new = self.copy[BUFLEN - (out_len * 2) + i];
             let old = self.residual[i];
             let it = interp(old, new, i, out_len);
-            out_data[i * 2] = it;
-            out_data[i * 2 + 1] = it;
+            for ch in 0..out_channels {
+                out_data[i * out_channels + ch] = it;
+            }
         }
 
         // update residual
