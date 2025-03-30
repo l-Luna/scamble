@@ -1,4 +1,4 @@
-use crate::{custom_dsp, fantasy};
+use crate::{click_simulator_2000, custom_dsp, fantasy};
 use crate::raw_bindings::FMOD_RESULT::FMOD_OK;
 use crate::raw_bindings::{FMOD_DEBUG_FLAGS, FMOD_DEBUG_MODE, FMOD_Debug_Initialize, FMOD_RESULT};
 use crate::result::FmResultTrait;
@@ -47,7 +47,7 @@ fn sim_effect() {
         .fm_unwrap();
     }
     let system = System::create().fm_unwrap();
-    let desc = custom_dsp::into_desc::<fantasy::Fantasy>();
+    let desc = custom_dsp::into_desc::<click_simulator_2000::ClickSimulator2000>();
     let dsp = system.create_dsp_from_description(&desc).fm_unwrap();
     let sound = system.create_sound("./noisy.mp3").fm_unwrap();
     let channel = system.play_sound(sound, None, true).fm_unwrap();

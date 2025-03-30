@@ -2,6 +2,7 @@
 #![feature(portable_simd)]
 #![feature(panic_payload_as_str)]
 
+use crate::click_simulator_2000::ClickSimulator2000;
 use crate::fantasy::Fantasy;
 use crate::noise_reduction::NoiseReduction;
 use crate::vocoder::Vocoder;
@@ -19,5 +20,6 @@ mod noise_reduction;
 mod exact;
 mod fantasy;
 mod vocoder;
+pub mod click_simulator_2000;
 
-expose_dsp_list!(NoiseReduction, Fantasy, Vocoder);
+expose_dsp_list!(NoiseReduction, Fantasy, Vocoder, ClickSimulator2000);
