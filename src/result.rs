@@ -215,14 +215,15 @@ impl FmodError {
     }
 }
 
-pub trait FmResultTrait<T>{
+pub trait FmResultTrait<T> {
     fn fm_unwrap(self) -> T;
 }
-impl<T> FmResultTrait<T> for FmodResult<T>{
+
+impl<T> FmResultTrait<T> for FmodResult<T> {
     fn fm_unwrap(self) -> T {
-        match self{
+        match self {
             Ok(x) => x,
-            Err(e) => panic!("FMOD Error: {}", e.error_string())
+            Err(e) => panic!("FMOD Error: {}", e.error_string()),
         }
     }
 }

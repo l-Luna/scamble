@@ -2,23 +2,19 @@
 #![feature(portable_simd)]
 #![feature(panic_payload_as_str)]
 
-use crate::fantasy::Fantasy;
-use crate::noise_reduction::NoiseReduction;
-use crate::vocoder::Vocoder;
-
-pub mod fmod;
-pub mod raw_bindings;
+use effects::fantasy::Fantasy;
+use effects::noise_reduction::NoiseReduction;
+use effects::vocoder::Vocoder;
 
 #[cfg(test)]
-pub mod simulate; // accessed in test mod by noise_reduction
-mod windy;
-pub mod custom_dsp;
-mod result;
-mod dynamics;
-mod noise_reduction;
-mod exact;
-mod fantasy;
-mod vocoder;
-pub mod click_simulator_2000;
+pub mod fmod;
+// accessed in test mod by noise_reduction
+#[cfg(test)]
+pub mod simulate;
+
+pub mod dsp;
+pub mod effects;
+pub mod raw_bindings;
+pub mod result;
 
 expose_dsp_list!(NoiseReduction, Fantasy, Vocoder);

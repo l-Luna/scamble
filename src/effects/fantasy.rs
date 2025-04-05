@@ -1,4 +1,6 @@
-use crate::custom_dsp::{Dsp, DspType, Parameter, ParameterType, ProcessResult};
+use crate::dsp::Parameter;
+use crate::dsp::interop::{Dsp, DspType, ParameterType, ProcessResult};
+use crate::dsp::signal::{Signal, SignalConst, SignalMut};
 use circular_buffer::CircularBuffer;
 use realfft::num_complex::Complex;
 use realfft::num_traits::Zero;
@@ -26,7 +28,7 @@ pub struct Fantasy {
     detune_bias: bool,
 
     echo_decay: f32,
-    echo_support: f32
+    echo_support: f32,
 }
 
 impl Dsp for Fantasy {
@@ -104,7 +106,7 @@ impl Dsp for Fantasy {
                 name: "echo_support",
                 unit: "",
                 desc: "",
-            }
+            },
         ]
     }
 
@@ -128,7 +130,7 @@ impl Dsp for Fantasy {
             detune_bias: true,
 
             echo_decay: 0.95,
-            echo_support: 0.1
+            echo_support: 0.1,
         }
     }
 
@@ -153,26 +155,10 @@ impl Dsp for Fantasy {
         }
     }
 
-    fn read(
-        &mut self,
-        in_data: &[f32],
-        out_data: &mut [f32],
-        in_channels: usize,
-        out_channels: usize,
-    ) {
-        out_data.fill(0.);
+    fn read(&mut self, input: SignalConst, mut output: SignalMut) {
+        output.fill(0.);
 
-        if in_channels == 1 {
-            self.delay.extend_from_slice(in_data);
-        } else {
-            self.delay.extend(
-                in_data
-                    .iter()
-                    .step_by(2)
-                    .zip(in_data.iter().skip(1).step_by(2))
-                    .map(|(l, r)| (l + r) / 2.)
-            );
-        }
+        self.delay.extend(input.read_mono());
 
         if self.delay.is_full() {
             copy_contiguous(&self.delay, &mut self.copy);
@@ -181,7 +167,7 @@ impl Dsp for Fantasy {
                 .unwrap();
 
             self.scratch[..HBUFLEN].copy_from_slice(&self.out);
-            for i in 8..HBUFLEN-8 {
+            for i in 8..HBUFLEN - 8 {
                 let orig_norm = self.out[i].norm();
                 let mut target_norm = orig_norm;
 
@@ -191,12 +177,15 @@ impl Dsp for Fantasy {
                     let end = (2 * window + 1).min(HBUFLEN - 2 - i);
                     let range = start..=end;
                     if self.detune_bias {
-                        for j in range { // the world if you could `let it: impl Iterator<...>`
-                            target_norm = (1. - self.detune_factor) * target_norm + self.detune_factor * self.scratch[i + j - window].norm();
+                        for j in range {
+                            // the world if you could `let it: impl Iterator<...>`
+                            target_norm = (1. - self.detune_factor) * target_norm
+                                + self.detune_factor * self.scratch[i + j - window].norm();
                         }
                     } else {
                         for j in range.rev() {
-                            target_norm = (1. - self.detune_factor) * target_norm + self.detune_factor * self.scratch[i + j - window].norm();
+                            target_norm = (1. - self.detune_factor) * target_norm
+                                + self.detune_factor * self.scratch[i + j - window].norm();
                         }
                     }
                     //target_norm = (i-range..=i+range).map(|i| self.scratch[i].norm()).sum::<f32>() / (range * 2 + 1) as f32;
@@ -219,7 +208,7 @@ impl Dsp for Fantasy {
                 .unwrap();
         }
 
-        let out_len = out_data.len() / out_channels;
+        let out_len = output.length();
         for i in 0..BUFLEN {
             self.copy[i] /= BUFLEN as f32;
         }
@@ -228,10 +217,7 @@ impl Dsp for Fantasy {
         for i in 0..out_len {
             let new = self.copy[BUFLEN - (out_len * 2) + i];
             let old = self.residual[i];
-            let it = interp(old, new, i, out_len);
-            for ch in 0..out_channels {
-                out_data[i * out_channels + ch] = it;
-            }
+            output.write_sample(i, interp(old, new, i, out_len));
         }
 
         // update residual

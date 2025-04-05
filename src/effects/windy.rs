@@ -1,8 +1,10 @@
-use crate::custom_dsp::{Dsp, DspType};
+use crate::dsp::interop::{Dsp, DspType};
+use crate::dsp::signal::{Signal, SignalConst, SignalMut};
 use rand::{Rng, rng};
 
 pub struct WindySynth {
     tail: f32,
+    buf: [f32; 1024],
 }
 
 impl Dsp for WindySynth {
@@ -19,7 +21,10 @@ impl Dsp for WindySynth {
     }
 
     fn create() -> Self {
-        WindySynth { tail: 0. }
+        WindySynth {
+            tail: 0.,
+            buf: [0.; 1024],
+        }
     }
 
     fn reset(&mut self) {
@@ -30,31 +35,30 @@ impl Dsp for WindySynth {
         Some(2)
     }
 
-    fn read(&mut self, _: &[f32], buf: &mut [f32], _: usize, chan: usize) {
-        let ulen = buf.len() / chan;
+    fn read(&mut self, _: SignalConst, mut output: SignalMut) {
+        let ulen = output.length();
 
-        buf[0] = shift(self.tail);
+        self.buf[0] = shift(self.tail);
+        output.write_sample(0, shift(self.tail));
         for i in 1..ulen {
-            buf[i * chan] = shift(buf[(i - 1) * chan]);
+            self.buf[i] = shift(self.buf[i - 1]);
         }
 
         // low-pass
         for _ in 0..4 {
-            buf[0] = (buf[0] + self.tail) / 2.;
+            self.buf[0] = (self.buf[0] + self.tail) / 2.;
             for i in 1..ulen {
-                buf[i * chan] = (buf[i * chan] + buf[(i - 1) * chan]) / 2.;
+                self.buf[i] = (self.buf[i] + self.buf[i - 1]) / 2.;
             }
         }
 
-        // sync channels
+        // write output
         for i in 0..ulen {
-            for j in 1..chan {
-                buf[i * chan + j] = buf[i * chan];
-            }
+            output.write_sample(i, self.buf[i]);
         }
 
         // set tail
-        self.tail = buf[ulen * chan - 1];
+        self.tail = self.buf[ulen - 1];
     }
 }
 

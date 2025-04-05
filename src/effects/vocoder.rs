@@ -1,4 +1,6 @@
-use crate::custom_dsp::{Dsp, DspType, Parameter, ParameterType, ProcessResult, with_sidechain};
+use crate::dsp::Parameter;
+use crate::dsp::interop::{Dsp, DspType, ParameterType, ProcessResult, with_sidechain};
+use crate::dsp::signal::{Signal, SignalConst, SignalMut};
 use circular_buffer::CircularBuffer;
 use realfft::num_complex::Complex;
 use realfft::num_traits::Zero;
@@ -38,25 +40,6 @@ impl Dsp for Vocoder {
 
     fn ty() -> DspType {
         DspType::Effect
-    }
-
-    fn create() -> Self {
-        let mut planner = RealFftPlanner::new();
-        Vocoder {
-            delay_carrier: Default::default(),
-            delay_signal: Default::default(),
-            silence: 0,
-            scratch: [Complex::zero(); BUFLEN],
-            out_carrier: [Complex::zero(); HBUFLEN],
-            out_signal: [Complex::zero(); HBUFLEN],
-            copy: [0.; BUFLEN],
-            residual: [0.; BUFLEN / 2],
-            dft_fwd: planner.plan_fft_forward(BUFLEN),
-            dft_bwd: planner.plan_fft_inverse(BUFLEN),
-            sidechain_enabled: false,
-            carrier_offset: 0,
-            signal_offset: 0,
-        }
     }
 
     fn parameters() -> Vec<Parameter<Self>> {
@@ -101,6 +84,32 @@ impl Dsp for Vocoder {
         ]
     }
 
+    fn create() -> Self {
+        let mut planner = RealFftPlanner::new();
+        Vocoder {
+            delay_carrier: Default::default(),
+            delay_signal: Default::default(),
+            silence: 0,
+            scratch: [Complex::zero(); BUFLEN],
+            out_carrier: [Complex::zero(); HBUFLEN],
+            out_signal: [Complex::zero(); HBUFLEN],
+            copy: [0.; BUFLEN],
+            residual: [0.; BUFLEN / 2],
+            dft_fwd: planner.plan_fft_forward(BUFLEN),
+            dft_bwd: planner.plan_fft_inverse(BUFLEN),
+            sidechain_enabled: false,
+            carrier_offset: 0,
+            signal_offset: 0,
+        }
+    }
+
+    fn reset(&mut self) {
+        self.delay_carrier.fill(0.);
+        self.delay_signal.fill(0.);
+        self.residual.fill(0.);
+        self.silence = 0;
+    }
+
     fn should_process(&mut self, idle: bool, incoming_length: usize) -> ProcessResult {
         if idle {
             self.silence += incoming_length;
@@ -115,44 +124,16 @@ impl Dsp for Vocoder {
         }
     }
 
-    fn reset(&mut self) {
-        self.delay_carrier.fill(0.);
-        self.delay_signal.fill(0.);
-        self.residual.fill(0.);
-        self.silence = 0;
-    }
+    fn read(&mut self, input: SignalConst, mut output: SignalMut) {
+        output.fill(0.);
 
-    fn read(
-        &mut self,
-        in_data: &[f32],
-        out_data: &mut [f32],
-        in_channels: usize,
-        out_channels: usize,
-    ) {
-        out_data.fill(0.);
-
-        if in_channels == 1 {
-            self.delay_signal.extend_from_slice(in_data);
-        } else {
-            self.delay_signal.extend(
-                in_data
-                    .iter()
-                    .step_by(2)
-                    .zip(in_data.iter().skip(1).step_by(2))
-                    .map(|(l, r)| (l + r) / 2.)
-            );
-        }
+        // extend buffers
+        self.delay_signal.extend(input.read_mono());
 
         if self.sidechain_enabled {
             with_sidechain(|rst| {
-                if let Some((carrier_data, carrier_channels)) = rst {
-                    self.delay_carrier.extend(
-                        carrier_data
-                            .iter()
-                            .step_by(2)
-                            .zip(carrier_data.iter().skip(1).step_by(2))
-                            .map(|(l, r)| (l + r) / 2.),
-                    );
+                if let Some(carrier) = rst {
+                    self.delay_carrier.extend(carrier.read_mono());
 
                     if self.delay_signal.is_full() && self.delay_carrier.is_full() {
                         copy_contiguous(&self.delay_signal, &mut self.copy);
@@ -211,7 +192,7 @@ impl Dsp for Vocoder {
                             )
                             .unwrap();
 
-                        let out_len = out_data.len() / out_channels;
+                        let out_len = output.length();
                         for i in 0..BUFLEN {
                             self.copy[i] /= BUFLEN as f32;
                         }
@@ -220,10 +201,7 @@ impl Dsp for Vocoder {
                         for i in 0..out_len {
                             let new = self.copy[BUFLEN - (out_len * 2) + i];
                             let old = self.residual[i];
-                            let it = interp(old, new, i, out_len);
-                            for ch in 0..out_channels {
-                                out_data[i * out_channels + ch] = it;
-                            }
+                            output.write_sample(i, interp(old, new, i, out_len));
                         }
 
                         // update residual

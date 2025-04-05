@@ -1,11 +1,11 @@
-use std::ops::Div;
-use crate::custom_dsp::{Dsp, DspType, Parameter, ParameterType, ProcessResult};
+use crate::dsp::interop::{Dsp, DspType, ProcessResult};
+use crate::dsp::signal::{Signal, SignalConst, SignalMut};
 use circular_buffer::CircularBuffer;
+use rand::{Rng, rng};
 use realfft::num_complex::Complex;
 use realfft::num_traits::Zero;
 use realfft::{ComplexToReal, RealFftPlanner, RealToComplex};
 use std::sync::Arc;
-use rand::{rng, Rng};
 
 // sqrt(2048)
 const ADJ: f32 = 45.25483399593904156165403917471;
@@ -83,23 +83,13 @@ impl Dsp for ClickSimulator2000 {
         Some(2)
     }
 
-    fn read(
-        &mut self,
-        in_data: &[f32],
-        out_data: &mut [f32],
-        in_channels: usize, // assume 2
-        out_channels: usize,
-    ) {
-        out_data.fill(0.);
+    fn read(&mut self, input: SignalConst, mut output: SignalMut) {
+        output.fill(0.);
 
         // extend buffers
-        if in_channels == 1 {
-            self.delay_left.extend_from_slice(in_data);
-            self.delay_right.extend_from_slice(in_data);
-        } else {
-            self.delay_left.extend(in_data.iter().step_by(2));
-            self.delay_right.extend(in_data.iter().skip(1).step_by(2));
-        }
+        let (l, r) = input.read_stereo();
+        self.delay_left.extend(l);
+        self.delay_right.extend(r);
 
         // when we have enough data...
         if self.delay_left.is_full() && self.delay_right.is_full() {
@@ -116,13 +106,12 @@ impl Dsp for ClickSimulator2000 {
                 .unwrap();
 
             // processing...
-            let adj: f32 = rng().random_range(0.7 .. 1.3);
+            let adj: f32 = rng().random_range(0.7..1.3);
 
             // apply filtering
             for i in 0..HBUFLEN {
-
                 self.out_left[i] *= adj;
-                
+
                 // normalize (part 1)
                 self.out_left[i] /= ADJ;
             }
@@ -137,18 +126,14 @@ impl Dsp for ClickSimulator2000 {
                 .unwrap();
 
             // normalize outputs (part 2)
-            let out_len = out_data.len() / out_channels;
             for i in 0..BUFLEN {
                 self.copy_left[i] /= ADJ;
             }
 
             // write to outputs
             let jitter: usize = rng().random_range(0..24);
-            for i in 0..out_len {
-                let it = self.copy_left[BUFLEN + i - (out_len + jitter)];
-                for ch in 0..out_channels {
-                    out_data[i * out_channels + ch] = it;
-                }
+            for i in 0..output.length() {
+                output.write_sample(i, self.copy_left[BUFLEN + i - (output.length() + jitter)]);
             }
         }
     }

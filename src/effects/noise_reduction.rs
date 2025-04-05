@@ -1,9 +1,11 @@
-use std::ops::Div;
-use crate::custom_dsp::{Dsp, DspType, Parameter, ParameterType, ProcessResult};
+use crate::dsp::Parameter;
+use crate::dsp::interop::{Dsp, DspType, ParameterType, ProcessResult};
+use crate::dsp::signal::{Signal, SignalConst, SignalMut};
 use circular_buffer::CircularBuffer;
 use realfft::num_complex::Complex;
 use realfft::num_traits::Zero;
 use realfft::{ComplexToReal, RealFftPlanner, RealToComplex};
+use std::ops::Div;
 use std::sync::Arc;
 
 // sqrt(2048)
@@ -25,8 +27,6 @@ pub struct NoiseReduction {
     dft_bwd: Arc<dyn ComplexToReal<f32>>,
     // keep track of previous silence for should-process
     silence: usize,
-    // internal clock for plotting
-    clock: usize,
     // buffers
     scratch: [Complex<f32>; BUFLEN],
     out_left: [Complex<f32>; HBUFLEN],
@@ -40,7 +40,7 @@ pub struct NoiseReduction {
     persist_enable: bool,
     persist_lerp: f32,
     noise_gate_enable: bool,
-    noise_gate_req: f32
+    noise_gate_req: f32,
 }
 
 impl Dsp for NoiseReduction {
@@ -140,7 +140,6 @@ impl Dsp for NoiseReduction {
             dft_fwd: planner.plan_fft_forward(BUFLEN),
             dft_bwd: planner.plan_fft_inverse(BUFLEN),
             silence: 0,
-            clock: 0,
             scratch: [Complex::zero(); BUFLEN],
             out_left: [Complex::zero(); HBUFLEN],
             out_right: [Complex::zero(); HBUFLEN],
@@ -163,7 +162,6 @@ impl Dsp for NoiseReduction {
         self.was_gated = false;
         self.residual.fill(0.);
         self.silence = 0;
-        self.clock = 0;
     }
 
     fn should_process(&mut self, idle: bool, incoming_length: usize) -> ProcessResult {
@@ -184,25 +182,13 @@ impl Dsp for NoiseReduction {
         Some(2)
     }
 
-    fn read(
-        &mut self,
-        in_data: &[f32],
-        out_data: &mut [f32],
-        in_channels: usize, // assume 2
-        out_channels: usize,
-    ) {
-        out_data.fill(0.);
+    fn read(&mut self, input: SignalConst, mut output: SignalMut) {
+        output.fill(0.);
 
         // extend buffers
-        if in_channels == 1 {
-            self.delay_left.extend_from_slice(in_data);
-            self.delay_right.extend_from_slice(in_data);
-        } else {
-            self.delay_left.extend(in_data.iter().step_by(2));
-            self.delay_right.extend(in_data.iter().skip(1).step_by(2));
-        }
-
-        self.clock += in_data.len() / in_channels;
+        let (l, r) = input.read_stereo();
+        self.delay_left.extend(l);
+        self.delay_right.extend(r);
 
         // when we have enough data...
         if self.delay_left.is_full() && self.delay_right.is_full() {
@@ -309,19 +295,16 @@ impl Dsp for NoiseReduction {
             }
 
             // normalize outputs (part 2)
-            let out_len = out_data.len() / out_channels;
             for i in 0..BUFLEN {
                 self.copy_left[i] /= ADJ;
             }
 
             // write to outputs
+            let out_len = output.length();
             for i in 0..out_len {
                 let new = self.copy_left[BUFLEN - (out_len * 2) + i];
                 let old = self.residual[i];
-                let it = interp(old, new, i, out_len);
-                for ch in 0..out_channels {
-                    out_data[i * out_channels + ch] = it;
-                }
+                output.write_sample(i, interp(old, new, i, out_len));
             }
 
             // update residual

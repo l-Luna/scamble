@@ -1,8 +1,9 @@
-use crate::{click_simulator_2000, custom_dsp, fantasy};
+use crate::dsp::interop;
+use crate::effects::{click_simulator_2000, windy};
+use crate::fmod;
 use crate::raw_bindings::FMOD_RESULT::FMOD_OK;
 use crate::raw_bindings::{FMOD_DEBUG_FLAGS, FMOD_DEBUG_MODE, FMOD_Debug_Initialize, FMOD_RESULT};
 use crate::result::FmResultTrait;
-use crate::{fmod, noise_reduction, windy};
 use fmod::system::System;
 use std::ffi::{CStr, c_char, c_int};
 use std::ptr;
@@ -12,26 +13,14 @@ use std::time::Duration;
 #[test]
 fn simulate() {
     let system = System::create().fm_unwrap();
-    let desc = custom_dsp::into_desc::<windy::WindySynth>();
+    let desc = interop::into_desc::<windy::WindySynth>();
     let dsp = system.create_dsp_from_description(&desc).fm_unwrap();
-    let channel = system.play_dsp(&dsp, None, false).fm_unwrap();
+    let _ = system.play_dsp(&dsp, None, false).fm_unwrap();
     for _ in 0..(7 * 60) {
         system.update().fm_unwrap();
         sleep(Duration::from_millis(12));
     }
     system.release().unwrap()
-}
-
-#[cfg(test)]
-#[derive(Debug)]
-pub struct NRPlot {
-    pub clock: usize,
-    pub delay_left: [f32; 2048],
-    pub delay_right: [f32; 2048],
-    pub freqs: [f32; 1024],
-    pub freq_var: f32,
-    pub persistent_freqs: [f32; 1024],
-    pub modulations: [[f32; 128]; 16],
 }
 
 #[test]
@@ -47,7 +36,7 @@ fn sim_effect() {
         .fm_unwrap();
     }
     let system = System::create().fm_unwrap();
-    let desc = custom_dsp::into_desc::<click_simulator_2000::ClickSimulator2000>();
+    let desc = interop::into_desc::<click_simulator_2000::ClickSimulator2000>();
     let dsp = system.create_dsp_from_description(&desc).fm_unwrap();
     let sound = system.create_sound("./noisy.mp3").fm_unwrap();
     let channel = system.play_sound(sound, None, true).fm_unwrap();

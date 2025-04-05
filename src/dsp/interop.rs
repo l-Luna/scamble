@@ -1,109 +1,12 @@
-use crate::raw_bindings::FMOD_RESULT::{FMOD_ERR_DSP_DONTPROCESS, FMOD_ERR_DSP_SILENCE, FMOD_ERR_PLUGIN, FMOD_OK};
 use crate::raw_bindings::*;
-use std::ffi::{c_char, c_int, c_uint, c_void, CString};
+use crate::raw_bindings::FMOD_DSP_PARAMETER_DATA_TYPE::*;
+use crate::raw_bindings::FMOD_RESULT::{FMOD_ERR_DSP_DONTPROCESS, FMOD_ERR_DSP_SILENCE, FMOD_ERR_PLUGIN, FMOD_OK};
+pub(crate) use crate::dsp::{Dsp, DspType, ParameterType, ProcessResult};
+use crate::dsp::signal::{SignalConst, SignalMut};
 use std::{panic, ptr};
-use std::any::Any;
+use std::ffi::{c_char, c_int, c_uint, c_void, CString};
 use std::ptr::{slice_from_raw_parts, slice_from_raw_parts_mut};
 use std::str::FromStr;
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum DspType {
-    Effect,
-    Generator,
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum ProcessResult {
-    Continue,
-    SkipNoEffect,
-    SkipSilent,
-}
-
-pub struct Parameter<Dsp: ?Sized> {
-    pub ty: ParameterType<Dsp>,
-    pub name: &'static str,
-    pub unit: &'static str,
-    pub desc: &'static str
-}
-
-pub enum ParameterType<Dsp: ?Sized> {
-    Float {
-        min: f32,
-        max: f32,
-        default: f32,
-        /* TODO: parameter mapping */
-        setter: fn(f32, &mut Dsp),
-        getter: fn(&Dsp) -> f32
-    },
-    Int {
-        min: i32,
-        max: i32,
-        default: i32,
-        max_is_inf: bool,
-        names: Option<Vec<&'static str>>,
-        setter: fn(i32, &mut Dsp),
-        getter: fn(&Dsp) -> i32
-    },
-    Bool {
-        default: bool,
-        names: Option<(&'static str, &'static str)>,
-        setter: fn(bool, &mut Dsp),
-        getter: fn(&Dsp) -> bool
-    },
-    Data {
-        setter: fn(&[u8], &mut Dsp),
-        getter: fn(&Dsp) -> (&[u8], &str)
-    },
-    // supplied by FMOD Studio
-    // TODO: accompanying data structures
-    OverallGain,
-    _3DAttrs,
-    Sidechain {
-        setter: fn(bool, &mut Dsp),
-        getter: fn(&Dsp) -> bool
-    },
-    Fft,
-    _Multi3DAttrs,
-    AttenuationRange,
-    DynamicResponse
-}
-
-pub trait Dsp {
-    // branding
-    fn name() -> &'static str;
-    fn version() -> u32;
-    fn ty() -> DspType;
-
-    // parameters
-    fn parameters() -> Vec<Parameter<Self>> {
-        vec![]
-    }
-
-    // lifecycle
-    fn create() -> Self;
-    fn reset(&mut self);
-
-    // processing
-    fn should_process(&mut self, idle: bool, _incoming_length: usize) -> ProcessResult {
-        if idle {
-            ProcessResult::SkipSilent
-        } else {
-            ProcessResult::Continue
-        }
-    }
-
-    fn preferred_out_channels(&self) -> Option<usize> {
-        None
-    }
-
-    fn read(
-        &mut self,
-        in_data: &[f32],
-        out_data: &mut [f32],
-        in_channels: usize,
-        out_channels: usize,
-    );
-}
 
 // and now the fun stuff
 
@@ -113,7 +16,7 @@ pub trait Dsp {
 macro_rules! expose_dsp {
     ($t:ty) => {
         const _: () = {
-            use crate::custom_dsp;
+            use crate::interop;
             use crate::raw_bindings::FMOD_DSP_DESCRIPTION;
             use core::mem::MaybeUninit;
             use paste::paste;
@@ -128,7 +31,7 @@ macro_rules! expose_dsp {
             #[unsafe(no_mangle)]
             #[allow(static_mut_refs)]
             unsafe extern "stdcall" fn FMODGetDSPDescription() -> *const FMOD_DSP_DESCRIPTION {
-                unsafe { paste!([<$t _ DESC>]).write(custom_dsp::into_desc::<$t>()) }
+                unsafe { paste!([<$t _ DESC>]).write(interop::into_desc::<$t>()) }
             }
 
             #[cfg(not(windows))]
@@ -136,7 +39,7 @@ macro_rules! expose_dsp {
             #[unsafe(no_mangle)]
             #[allow(static_mut_refs)]
             unsafe extern "C" fn FMODGetDSPDescription() -> *const FMOD_DSP_DESCRIPTION {
-                unsafe { paste!([<$t DESC>]).write(custom_dsp::into_desc::<$t>()) }
+                unsafe { paste!([<$t DESC>]).write(interop::into_desc::<$t>()) }
             }
         };
     };
@@ -149,7 +52,7 @@ macro_rules! expose_dsp_list {
             use core::mem::MaybeUninit;
             use core::ptr;
             use paste::paste;
-            use crate::custom_dsp;
+            use crate::dsp::interop;
             use crate::raw_bindings::FMOD_DSP_DESCRIPTION;
             use crate::raw_bindings::FMOD_PLUGINLIST;
             use crate::raw_bindings::FMOD_PLUGINTYPE::FMOD_PLUGINTYPE_DSP;
@@ -163,12 +66,12 @@ macro_rules! expose_dsp_list {
                     #[allow(static_mut_refs)]
                     #[allow(non_snake_case)]
                     fn [<Write $t>]() -> *const FMOD_DSP_DESCRIPTION {
-                        unsafe { paste!([<$t _ DESC>]).write(custom_dsp::into_desc::<$t>()) }
+                        unsafe { paste!([<$t _ DESC>]).write(interop::into_desc::<$t>()) }
                     }
                 }
             )*
 
-            static mut PLUGIN_LIST: MaybeUninit<[FMOD_PLUGINLIST; ${count($t)} + 1]> = MaybeUninit::zeroed();
+            static mut PLUGIN_LIST: MaybeUninit<[FMOD_PLUGINLIST; $ {count($t)} + 1]> = MaybeUninit::zeroed();
 
             #[cfg(windows)]
             #[allow(non_snake_case)]
@@ -195,10 +98,9 @@ macro_rules! expose_dsp_list {
 
 pub(crate) use expose_dsp;
 pub(crate) use expose_dsp_list;
-use crate::raw_bindings::FMOD_DSP_PARAMETER_DATA_TYPE::{FMOD_DSP_PARAMETER_DATA_TYPE_3DATTRIBUTES, FMOD_DSP_PARAMETER_DATA_TYPE_3DATTRIBUTES_MULTI, FMOD_DSP_PARAMETER_DATA_TYPE_ATTENUATION_RANGE, FMOD_DSP_PARAMETER_DATA_TYPE_DYNAMIC_RESPONSE, FMOD_DSP_PARAMETER_DATA_TYPE_FFT, FMOD_DSP_PARAMETER_DATA_TYPE_OVERALLGAIN, FMOD_DSP_PARAMETER_DATA_TYPE_SIDECHAIN, FMOD_DSP_PARAMETER_DATA_TYPE_USER};
 
 pub fn into_desc<D: Dsp>() -> FMOD_DSP_DESCRIPTION {
-    std::panic::set_hook(Box::new(|it| {
+    panic::set_hook(Box::new(|it| {
         let mut desc = String::new();
         desc.push_str("Panic");
         if let Some(payload) = it.payload_as_str() {
@@ -377,14 +279,14 @@ static DBGSTR: &'static str = "Rust DSP\0";
 static mut CUR_STATE: *mut FMOD_DSP_STATE = ptr::null_mut();
 static mut IN_LENGTH: usize = 0;
 
-pub fn with_sidechain<T>(f: impl FnOnce(Option<(&[f32], usize)>) -> T) -> T{
+pub fn with_sidechain<T>(f: impl FnOnce(Option<SignalConst>) -> T) -> T{
     let cur_state = unsafe { CUR_STATE };
     if cur_state.is_null() {
         f(None)
     } else {
         let (sidechain_ptr, sidechain_channels) = unsafe { ((*cur_state).sidechaindata, (*cur_state).sidechainchannels) };
         let slice = unsafe { &*slice_from_raw_parts(sidechain_ptr, IN_LENGTH) };
-        f(Some((slice, sidechain_channels as usize)))
+        f(Some(SignalConst::new(slice, sidechain_channels as usize)))
     }
 }
 
@@ -448,8 +350,7 @@ extern "C" fn reset_callback<D: Dsp>(dsp_state: *mut FMOD_DSP_STATE) -> FMOD_RES
         
         match result{
             Ok(_) => FMOD_OK,
-            Err(e) => {
-                // handle_panic(e, dsp_state);
+            Err(_) => {
                 FMOD_ERR_PLUGIN
             }
         }
@@ -480,8 +381,7 @@ extern "C" fn should_process_callback<D: Dsp>(
         
         match result{
             Ok(_) => FMOD_OK,
-            Err(e) => {
-                // handle_panic(e, dsp_state);
+            Err(_) => {
                 FMOD_ERR_PLUGIN
             }
         }
@@ -501,22 +401,19 @@ extern "C" fn read_callback<D: Dsp>(
         
         let result = panic::catch_unwind(|| {
             let data = &mut *((*dsp_state).plugindata as *mut D);
+            let in_data = &*slice_from_raw_parts_mut(in_data, length as usize);
+            let out_data = &mut *slice_from_raw_parts_mut(out_data, length as usize);
             data.read(
-                &*slice_from_raw_parts(in_data, length as usize),
-                &mut *slice_from_raw_parts_mut(out_data, length as usize),
-                in_channels as usize,
-                *out_channels as usize,
+                SignalConst::new(in_data, in_channels as usize),
+                SignalMut::new(out_data, *out_channels as usize),
             );
         });
         
         CUR_STATE = ptr::null_mut();
-        
-        match result{
+
+        match result {
             Ok(_) => FMOD_OK,
-            Err(e) => {
-                // handle_panic(e, dsp_state);
-                FMOD_ERR_PLUGIN
-            }
+            Err(_) => FMOD_ERR_PLUGIN
         }
     }
 }
@@ -550,11 +447,11 @@ extern "C" fn process_callback<D: Dsp>(
             } else {
                 let in_chan = (*(*in_buffers).buffernumchannels) as usize;
                 let out_chan = (*(*out_buffers).buffernumchannels) as usize;
+                let in_data = &*slice_from_raw_parts_mut(*(*in_buffers).buffers, length as usize * in_chan);
+                let out_data = &mut *slice_from_raw_parts_mut(*(*out_buffers).buffers, length as usize * out_chan);
                 data.read(
-                    &*slice_from_raw_parts(*(*in_buffers).buffers, length as usize * in_chan),
-                    &mut *slice_from_raw_parts_mut(*(*out_buffers).buffers, length as usize * out_chan),
-                    in_chan,
-                    out_chan,
+                    SignalConst::new(in_data, in_chan),
+                    SignalMut::new(out_data, out_chan),
                 );
                 FMOD_OK
             }
@@ -563,8 +460,7 @@ extern "C" fn process_callback<D: Dsp>(
         CUR_STATE = ptr::null_mut();
         IN_LENGTH = 0;
 
-        proc.unwrap_or_else(|e| {
-            // handle_panic(e, dsp_state);
+        proc.unwrap_or_else(|_| {
             FMOD_ERR_PLUGIN
         })
     }

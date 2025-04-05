@@ -1,4 +1,5 @@
-use crate::custom_dsp::{Dsp, DspType};
+use crate::dsp::interop::{Dsp, DspType};
+use crate::dsp::signal::{Signal, SignalConst, SignalMut};
 use std::simd::num::SimdFloat;
 use std::simd::{StdFloat, f32x16};
 
@@ -21,10 +22,10 @@ impl Dsp for LocalDynamics {
         LocalDynamics {}
     }
 
-    fn reset(&mut self) {}
-
-    fn read(&mut self, in_data: &[f32], out_data: &mut [f32], _: usize, _: usize) {
+    fn read(&mut self, input: SignalConst, mut output: SignalMut) {
         // vector loop
+        let in_data = input.samples();
+        let out_data = output.samples_mut();
         let l = in_data.len();
         for i in 0..l / 16 {
             let x = f32x16::load_or(&in_data[i * 16..], f32x16::splat(0.));
