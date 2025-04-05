@@ -51,18 +51,25 @@ pub enum ParameterType<Dsp: ?Sized> {
         setter: fn(&[u8], &mut Dsp),
         getter: fn(&Dsp) -> (&[u8], &str),
     },
-    // supplied by FMOD Studio
-    // TODO: accompanying data structures
-    OverallGain,
-    _3DAttrs,
+    // max of 1 of these
+    /// Provides access to an additional signal input. The parameter itself is set to `true` when
+    /// a sidechain input exists; use `interop::with_sidechain` to access the signal itself.
     Sidechain {
         setter: fn(bool, &mut Dsp),
         getter: fn(&Dsp) -> bool,
     },
-    Fft,
-    _Multi3DAttrs,
-    AttenuationRange,
+    // TODO: accompanying data structures
     DynamicResponse,
+    /// Read by FMOD Studio to decide when to virtualize sounds.
+    OverallGain,
+    /// Set by FMOD Studio with the player's position and attributes.
+    ListenerAttributes,
+    /// Set by FMOD Studio with all player's positions and attributes, if there are multiple.
+    ListenerAttributesList,
+    /// Set by FMOD Studio to the min/max range of the event containing this DSP.
+    AttenuationRange,
+    /// Set to provide access to FFT data to games.
+    Fft,
 }
 
 pub trait Dsp {

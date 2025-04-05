@@ -196,7 +196,7 @@ pub fn into_desc<D: Dsp>() -> FMOD_DSP_DESCRIPTION {
                         datatype: FMOD_DSP_PARAMETER_DATA_TYPE_OVERALLGAIN as i32
                     }
                 } },
-                ParameterType::_3DAttrs
+                ParameterType::ListenerAttributes
                     => { FMOD_DSP_PARAMETER_DESC__bindgen_ty_1 { datadesc: FMOD_DSP_PARAMETER_DESC_DATA {
                         datatype: FMOD_DSP_PARAMETER_DATA_TYPE_3DATTRIBUTES as i32
                     }
@@ -211,7 +211,7 @@ pub fn into_desc<D: Dsp>() -> FMOD_DSP_DESCRIPTION {
                         datatype: FMOD_DSP_PARAMETER_DATA_TYPE_FFT as i32
                     }
                 } },
-                ParameterType::_Multi3DAttrs
+                ParameterType::ListenerAttributesList
                     => { FMOD_DSP_PARAMETER_DESC__bindgen_ty_1 { datadesc: FMOD_DSP_PARAMETER_DESC_DATA {
                         datatype: FMOD_DSP_PARAMETER_DATA_TYPE_3DATTRIBUTES_MULTI as i32
                     }
