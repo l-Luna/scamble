@@ -1,5 +1,13 @@
+# generated files
 /target
 .idea/
 
+# testing sounds
 test_sound.m4a
 test_sound.mp3
+
+# native libs
+fmod.dll
+libs/fmod.dll
+libs/libfmod.dylib
+libs/libfmod.so
