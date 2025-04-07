@@ -1,0 +1,8 @@
+[package]
+name = "tester"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+scamble = { path = "..", features = ["fmod_bindings"] }
+vizia = { git = "https://github.com/vizia/vizia" }

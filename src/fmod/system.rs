@@ -7,6 +7,7 @@ use crate::result::*;
 use std::ffi::CString;
 use std::ptr;
 
+#[derive(Copy, Clone)]
 pub struct System(*mut FMOD_SYSTEM);
 
 impl System {

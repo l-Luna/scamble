@@ -6,7 +6,7 @@ use effects::fantasy::Fantasy;
 use effects::noise_reduction::NoiseReduction;
 use effects::vocoder::Vocoder;
 
-#[cfg(test)]
+#[cfg(feature = "fmod_bindings")]
 pub mod fmod;
 #[cfg(test)]
 pub mod simulate;

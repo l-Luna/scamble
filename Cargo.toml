@@ -6,6 +6,9 @@ edition = "2024"
 [lib]
 crate-type = ["dylib"]
 
+[workspace]
+members = ["tester"]
+
 [dependencies]
 rand = "0.9.0"
 paste = "1.0.15"
@@ -15,6 +18,5 @@ realfft = "3.4.0"
 [build-dependencies]
 bindgen = "0.71.1"
 
-[dev-dependencies]
-lockfree = "0.5.1"
-plotters = "0.3.7"
+[features]
+fmod_bindings = []
