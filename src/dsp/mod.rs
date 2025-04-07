@@ -1,4 +1,5 @@
-use crate::dsp::signal::{SignalConst, SignalMut};
+use crate::data::*;
+use crate::dsp::signal::*;
 
 pub mod interop;
 pub mod signal;
@@ -51,25 +52,42 @@ pub enum ParameterType<Dsp: ?Sized> {
         setter: fn(&[u8], &mut Dsp),
         getter: fn(&Dsp) -> (&[u8], &str),
     },
-    // max of 1 of these
+    // Max of 1 of each of these:
     /// Provides access to an additional signal input. The parameter itself is set to `true` when
     /// a sidechain input exists; use `interop::with_sidechain` to access the signal itself.
     Sidechain {
         setter: fn(bool, &mut Dsp),
         getter: fn(&Dsp) -> bool,
     },
-    // TODO: accompanying data structures
-    DynamicResponse,
+    DynamicResponse {
+        setter: fn(DynamicResponseData, &mut Dsp),
+        getter: fn(&Dsp) -> DynamicResponseData
+    },
     /// Read by FMOD Studio to decide when to virtualize sounds.
-    OverallGain,
+    OverallGain {
+        setter: fn(OverallGainData, &mut Dsp),
+        getter: fn(&Dsp) -> OverallGainData
+    },
     /// Set by FMOD Studio with the player's position and attributes.
-    ListenerAttributes,
+    ListenerAttributes {
+        setter: fn(ListenerAttributesData, &mut Dsp),
+        getter: fn(&Dsp) -> ListenerAttributesData
+    },
     /// Set by FMOD Studio with all player's positions and attributes, if there are multiple.
-    ListenerAttributesList,
+    ListenerAttributesList {
+        setter: fn(ListenerAttributesListData, &mut Dsp),
+        getter: fn(&Dsp) -> ListenerAttributesListData
+    },
     /// Set by FMOD Studio to the min/max range of the event containing this DSP.
-    AttenuationRange,
+    AttenuationRange {
+        setter: fn(AttenuationRangeData, &mut Dsp),
+        getter: fn(&Dsp) -> AttenuationRangeData
+    },
     /// Set to provide access to FFT data to games.
-    Fft,
+    Fft {
+        setter: fn(FftData, &mut Dsp),
+        getter: fn(&Dsp) -> FftData
+    },
 }
 
 pub trait Dsp {

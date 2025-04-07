@@ -189,12 +189,12 @@ pub fn into_desc<D: Dsp>() -> FMOD_DSP_DESCRIPTION {
                         datatype: FMOD_DSP_PARAMETER_DATA_TYPE_USER as i32
                     }
                 } },
-                ParameterType::OverallGain
+                ParameterType::OverallGain { .. }
                     => { FMOD_DSP_PARAMETER_DESC__bindgen_ty_1 { datadesc: FMOD_DSP_PARAMETER_DESC_DATA {
                         datatype: FMOD_DSP_PARAMETER_DATA_TYPE_OVERALLGAIN as i32
                     }
                 } },
-                ParameterType::ListenerAttributes
+                ParameterType::ListenerAttributes { .. }
                     => { FMOD_DSP_PARAMETER_DESC__bindgen_ty_1 { datadesc: FMOD_DSP_PARAMETER_DESC_DATA {
                         datatype: FMOD_DSP_PARAMETER_DATA_TYPE_3DATTRIBUTES as i32
                     }
@@ -204,22 +204,22 @@ pub fn into_desc<D: Dsp>() -> FMOD_DSP_DESCRIPTION {
                         datatype: FMOD_DSP_PARAMETER_DATA_TYPE_SIDECHAIN as i32
                     }
                 } },
-                ParameterType::Fft
+                ParameterType::Fft { .. }
                     => { FMOD_DSP_PARAMETER_DESC__bindgen_ty_1 { datadesc: FMOD_DSP_PARAMETER_DESC_DATA {
                         datatype: FMOD_DSP_PARAMETER_DATA_TYPE_FFT as i32
                     }
                 } },
-                ParameterType::ListenerAttributesList
+                ParameterType::ListenerAttributesList { .. }
                     => { FMOD_DSP_PARAMETER_DESC__bindgen_ty_1 { datadesc: FMOD_DSP_PARAMETER_DESC_DATA {
                         datatype: FMOD_DSP_PARAMETER_DATA_TYPE_3DATTRIBUTES_MULTI as i32
                     }
                 } },
-                ParameterType::AttenuationRange
+                ParameterType::AttenuationRange { .. }
                     => { FMOD_DSP_PARAMETER_DESC__bindgen_ty_1 { datadesc: FMOD_DSP_PARAMETER_DESC_DATA {
                         datatype: FMOD_DSP_PARAMETER_DATA_TYPE_ATTENUATION_RANGE as i32
                     }
                 } },
-                ParameterType::DynamicResponse
+                ParameterType::DynamicResponse { .. }
                     => { FMOD_DSP_PARAMETER_DESC__bindgen_ty_1 { datadesc: FMOD_DSP_PARAMETER_DESC_DATA {
                         datatype: FMOD_DSP_PARAMETER_DATA_TYPE_DYNAMIC_RESPONSE as i32
                     }

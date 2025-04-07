@@ -2701,6 +2701,7 @@ dependencies = [
 name = "tester"
 version = "0.1.0"
 dependencies = [
+ "rand 0.9.0",
  "scamble",
  "vizia",
 ]

@@ -15,5 +15,6 @@ pub mod dsp;
 pub mod effects;
 pub mod raw_bindings;
 pub mod result;
+pub mod data;
 
 expose_dsp_list!(NoiseReduction, Fantasy, Vocoder);

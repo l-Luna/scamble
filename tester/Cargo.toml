@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 scamble = { path = "..", features = ["fmod_bindings"] }
 vizia = { git = "https://github.com/vizia/vizia" }
+rand = "0.9.0"
