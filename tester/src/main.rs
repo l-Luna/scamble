@@ -69,6 +69,7 @@ fn main() -> Result<(), ApplicationError> {
         view_dsp::<It>(cx);
     })
     .title("Scamble Tester")
+    .inner_size((600, 250))
     .on_idle(move |cx| system.update().unwrap())
     .run()
 }
@@ -84,6 +85,7 @@ fn view_dsp<D: Dsp>(cx: &mut Context) {
 }
 
 fn view_param<D: Dsp>(cx: &mut Context, idx: usize, parameter: &Parameter<D>) {
+    let unit: &'static str = parameter.unit;
     VStack::new(cx, |cx| {
         Label::new(cx, parameter.name);
 
@@ -99,7 +101,11 @@ fn view_param<D: Dsp>(cx: &mut Context, idx: usize, parameter: &Parameter<D>) {
                 )
                 .on_change(move |cx, value| cx.emit(AppEvent::SetParamFloat(idx, value)));
 
-                Label::new(cx, read_float_lens(idx, default));
+                Label::new(
+                    cx,
+                    read_float_lens(idx, default).map(move |it| format!("{it}{unit}")),
+                )
+                .live(Live::Assertive);
             }
             ParameterType::Bool { default, names, .. } => {
                 ToggleButton::new(
@@ -119,6 +125,7 @@ fn view_param<D: Dsp>(cx: &mut Context, idx: usize, parameter: &Parameter<D>) {
                                 }
                             }),
                         )
+                        .live(Live::Assertive)
                     },
                 )
                 .on_toggle(move |cx| {
@@ -134,7 +141,11 @@ fn view_param<D: Dsp>(cx: &mut Context, idx: usize, parameter: &Parameter<D>) {
                         cx.emit(AppEvent::SetParamInt(idx, value as i32));
                     });
 
-                Label::new(cx, read_int_lens(idx, default));
+                Label::new(
+                    cx,
+                    read_int_lens(idx, default).map(move |it| format!("{it}{unit}")),
+                )
+                .live(Live::Assertive);
             }
             _ => {}
         };
