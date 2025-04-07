@@ -8,8 +8,6 @@ use std::ffi::{c_char, c_int, c_uint, c_void, CString};
 use std::ptr::{slice_from_raw_parts, slice_from_raw_parts_mut};
 use std::str::FromStr;
 
-// and now the fun stuff
-
 // wrapping DSPs into FMOD's format
 
 #[macro_export]
@@ -39,7 +37,7 @@ macro_rules! expose_dsp {
             #[unsafe(no_mangle)]
             #[allow(static_mut_refs)]
             unsafe extern "C" fn FMODGetDSPDescription() -> *const FMOD_DSP_DESCRIPTION {
-                unsafe { paste!([<$t DESC>]).write(interop::into_desc::<$t>()) }
+                unsafe { paste!([<$t _ DESC>]).write(interop::into_desc::<$t>()) }
             }
         };
     };

@@ -8,7 +8,6 @@ use effects::vocoder::Vocoder;
 
 #[cfg(test)]
 pub mod fmod;
-// accessed in test mod by noise_reduction
 #[cfg(test)]
 pub mod simulate;
 
