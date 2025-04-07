@@ -40,7 +40,7 @@ impl<L: Lens<Target = Spectrum>> View for Spectrogram<L> {
         let mut shape = [Point::new(0., 0.); 514];
         shape[..512].copy_from_slice(&points);
         shape[512] = Point::from(bounds.bottom_right());
-        shape[512] = Point::from(bounds.bottom_left());
+        shape[513] = Point::from(bounds.bottom_left());
 
         let mut path = Path::new();
         path.add_poly(&points, false);
