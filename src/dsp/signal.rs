@@ -54,9 +54,14 @@ pub struct SignalMut<'a> {
 
 impl<'a> SignalConst<'a> {
     /// Construct a [SignalConst] from its samples and channel count.
-    /// Panics if `data.len()` is not a multiple of `channels`.
+    /// Panics if `data.len()` is not a multiple of `channels`, or if `channels` is `0` and
+    /// `data.len() != 0`.
     pub fn new(data: &'a [f32], channels: usize) -> Self {
-        assert_eq!(data.len() % channels, 0);
+        if channels != 0 {
+            assert_eq!(data.len() % channels, 0);
+        } else {
+            assert_eq!(data.len(), 0);
+        }
         SignalConst { data, channels }
     }
 }
@@ -73,9 +78,14 @@ impl<'a> Signal for SignalConst<'a> {
 
 impl<'a> SignalMut<'a> {
     /// Construct a [SignalMut] from its samples and channel count.
-    /// Panics if `data.len()` is not a multiple of `channels`.
+    /// Panics if `data.len()` is not a multiple of `channels`, or if `channels` is `0` and
+    /// `data.len() != 0`.
     pub fn new(data: &'a mut [f32], channels: usize) -> Self {
-        assert_eq!(data.len() % channels, 0);
+        if channels != 0 {
+            assert_eq!(data.len() % channels, 0);
+        } else {
+            assert_eq!(data.len(), 0);
+        }
         SignalMut { data, channels }
     }
 

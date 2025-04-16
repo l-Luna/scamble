@@ -1,6 +1,6 @@
 use crate::raw_bindings::*;
 use crate::raw_bindings::FMOD_DSP_PARAMETER_DATA_TYPE::*;
-use crate::raw_bindings::FMOD_RESULT::{FMOD_ERR_DSP_DONTPROCESS, FMOD_ERR_DSP_SILENCE, FMOD_ERR_PLUGIN, FMOD_OK};
+use crate::raw_bindings::FMOD_RESULT::{FMOD_ERR_DSP_DONTPROCESS, FMOD_ERR_DSP_SILENCE, FMOD_ERR_INVALID_PARAM, FMOD_ERR_PLUGIN, FMOD_OK};
 pub(crate) use crate::dsp::{Dsp, DspType, ParameterType, ProcessResult};
 use crate::dsp::signal::{SignalConst, SignalMut};
 use std::{panic, ptr};
@@ -338,14 +338,14 @@ extern "C" fn release_callback<D: Dsp>(dsp_state: *mut FMOD_DSP_STATE) -> FMOD_R
 extern "C" fn reset_callback<D: Dsp>(dsp_state: *mut FMOD_DSP_STATE) -> FMOD_RESULT {
     unsafe {
         CUR_STATE = dsp_state;
-        
+
         let result = panic::catch_unwind(|| {
             let data = &mut *((*dsp_state).plugindata as *mut D);
             data.reset();
         });
 
         CUR_STATE = ptr::null_mut();
-        
+
         match result{
             Ok(_) => FMOD_OK,
             Err(_) => {
@@ -365,7 +365,7 @@ extern "C" fn should_process_callback<D: Dsp>(
 ) -> FMOD_RESULT {
     unsafe {
         CUR_STATE = dsp_state;
-        
+
         let result = panic::catch_unwind(|| {
             let data = &mut *((*dsp_state).plugindata as *mut D);
             match data.should_process(idle != 0, length as usize) {
@@ -376,7 +376,7 @@ extern "C" fn should_process_callback<D: Dsp>(
         });
 
         CUR_STATE = ptr::null_mut();
-        
+
         match result{
             Ok(_) => FMOD_OK,
             Err(_) => {
@@ -396,17 +396,21 @@ extern "C" fn read_callback<D: Dsp>(
 ) -> FMOD_RESULT {
     unsafe {
         CUR_STATE = dsp_state;
-        
+
         let result = panic::catch_unwind(|| {
             let data = &mut *((*dsp_state).plugindata as *mut D);
-            let in_data = &*slice_from_raw_parts_mut(in_data, length as usize);
+            let in_data = if <*mut f32>::is_null(in_data) {
+                &[]
+            } else {
+                &*slice_from_raw_parts_mut(in_data, length as usize)
+            };
             let out_data = &mut *slice_from_raw_parts_mut(out_data, length as usize);
             data.read(
                 SignalConst::new(in_data, in_channels as usize),
                 SignalMut::new(out_data, *out_channels as usize),
             );
         });
-        
+
         CUR_STATE = ptr::null_mut();
 
         match result {
@@ -445,7 +449,12 @@ extern "C" fn process_callback<D: Dsp>(
             } else {
                 let in_chan = (*(*in_buffers).buffernumchannels) as usize;
                 let out_chan = (*(*out_buffers).buffernumchannels) as usize;
-                let in_data = &*slice_from_raw_parts_mut(*(*in_buffers).buffers, length as usize * in_chan);
+                let in_ptr = *(*in_buffers).buffers;
+                let in_data = if <*mut f32>::is_null(in_ptr) {
+                    &[]
+                } else {
+                    &*slice_from_raw_parts_mut(in_ptr, length as usize * in_chan)
+                };
                 let out_data = &mut *slice_from_raw_parts_mut(*(*out_buffers).buffers, length as usize * out_chan);
                 data.read(
                     SignalConst::new(in_data, in_chan),
@@ -479,7 +488,7 @@ extern "C" fn set_param_float_callback<D: Dsp>(
         }
     }
     unsafe { log_err(&format!("Failed to set float parameter at index {index} (of {})", params.len()), dsp_state); }
-    FMOD_ERR_PLUGIN
+    FMOD_ERR_INVALID_PARAM
 }
 
 extern "C" fn get_param_float_callback<D: Dsp>(
@@ -500,7 +509,7 @@ extern "C" fn get_param_float_callback<D: Dsp>(
         }
     }
     unsafe { log_err(&format!("Failed to get float parameter at index {index} (of {})", params.len()), dsp_state); }
-    FMOD_ERR_PLUGIN
+    FMOD_ERR_INVALID_PARAM
 }
 
 extern "C" fn set_param_int_callback<D: Dsp>(
@@ -518,7 +527,7 @@ extern "C" fn set_param_int_callback<D: Dsp>(
         }
     }
     unsafe { log_err(&format!("Failed to set int parameter at index {index} (of {})", params.len()), dsp_state); }
-    FMOD_ERR_PLUGIN
+    FMOD_ERR_INVALID_PARAM
 }
 
 extern "C" fn get_param_int_callback<D: Dsp>(
@@ -539,7 +548,7 @@ extern "C" fn get_param_int_callback<D: Dsp>(
         }
     }
     unsafe { log_err(&format!("Failed to get int parameter at index {index} (of {})", params.len()), dsp_state); }
-    FMOD_ERR_PLUGIN
+    FMOD_ERR_INVALID_PARAM
 }
 
 extern "C" fn set_param_bool_callback<D: Dsp>(
@@ -557,7 +566,7 @@ extern "C" fn set_param_bool_callback<D: Dsp>(
         }
     }
     unsafe { log_err(&format!("Failed to set boolean parameter at index {index} (of {})", params.len()), dsp_state); }
-    FMOD_ERR_PLUGIN
+    FMOD_ERR_INVALID_PARAM
 }
 
 extern "C" fn get_param_bool_callback<D: Dsp>(
@@ -578,7 +587,7 @@ extern "C" fn get_param_bool_callback<D: Dsp>(
         }
     }
     unsafe { log_err(&format!("Failed to get boolean parameter at index {index} (of {})", params.len()), dsp_state); }
-    FMOD_ERR_PLUGIN
+    FMOD_ERR_INVALID_PARAM
 }
 
 extern "C" fn set_param_data_callback<D: Dsp>(
@@ -607,7 +616,7 @@ extern "C" fn set_param_data_callback<D: Dsp>(
         }
     }
     unsafe { log_err(&format!("Failed to set data parameter at index {index} (of {})", params.len()), dsp_state); }
-    FMOD_ERR_PLUGIN
+    FMOD_ERR_INVALID_PARAM
 }
 
 extern "C" fn get_param_data_callback<D: Dsp>(
@@ -622,14 +631,24 @@ extern "C" fn get_param_data_callback<D: Dsp>(
     if (index as usize) < params.len() {
         let param = &params[index as usize];
         if let ParameterType::Data { getter, .. } = param.ty {
-            let (c_value, c_desc) = getter(&*data);
-            unsafe {
-                let target = &mut *slice_from_raw_parts_mut(desc, 32);
-                for (i, c) in c_desc[..31].chars().enumerate() {
-                    target[i] = c as c_char;
+            let result = getter(&*data);
+            if let Some((c_value, c_desc)) = result {
+                unsafe {
+                    let target = &mut *slice_from_raw_parts_mut(desc, 32);
+                    if let Some(c_desc) = c_desc {
+                        for (i, c) in c_desc[..31].chars().enumerate() {
+                            target[i] = c as c_char;
+                        }
+                    }
+                    *value = c_value.as_ptr() as *mut _;
+                    *length = c_value.len() as c_uint;
                 }
-                *value = c_value.as_ptr() as *mut _;
-                *length = c_value.len() as c_uint;
+                return FMOD_OK;
+            } else {
+                unsafe {
+                    *value = ptr::null_mut();
+                    *length = 0;
+                }
                 return FMOD_OK;
             }
         }
@@ -641,5 +660,5 @@ extern "C" fn get_param_data_callback<D: Dsp>(
         }
     }
     unsafe { log_err(&format!("Failed to get data parameter at index {index} (of {})", params.len()), dsp_state); }
-    FMOD_ERR_PLUGIN
+    FMOD_ERR_INVALID_PARAM
 }

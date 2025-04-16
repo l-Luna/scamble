@@ -3,6 +3,7 @@ use crate::dsp::signal::*;
 
 pub mod interop;
 pub mod signal;
+pub mod decode;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum DspType {
@@ -50,7 +51,7 @@ pub enum ParameterType<Dsp: ?Sized> {
     },
     Data {
         setter: fn(&[u8], &mut Dsp),
-        getter: fn(&Dsp) -> (&[u8], &str),
+        getter: fn(&Dsp) -> Option<(&[u8], Option<&str>)>,
     },
     // Max of 1 of each of these:
     /// Provides access to an additional signal input. The parameter itself is set to `true` when
