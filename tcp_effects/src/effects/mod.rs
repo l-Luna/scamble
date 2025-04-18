@@ -5,4 +5,3 @@ pub mod fantasy;
 pub mod noise_reduction;
 pub mod vocoder;
 pub mod windy;
-pub mod cassette_player;

@@ -1,7 +1,7 @@
 use crate::raw_bindings::*;
 use crate::raw_bindings::FMOD_DSP_PARAMETER_DATA_TYPE::*;
 use crate::raw_bindings::FMOD_RESULT::{FMOD_ERR_DSP_DONTPROCESS, FMOD_ERR_DSP_SILENCE, FMOD_ERR_INVALID_PARAM, FMOD_ERR_PLUGIN, FMOD_OK};
-pub(crate) use crate::dsp::{Dsp, DspType, ParameterType, ProcessResult};
+pub use crate::dsp::{Dsp, DspType, ParameterType, ProcessResult};
 use crate::dsp::signal::{SignalConst, SignalMut};
 use std::{alloc, panic, ptr};
 use std::alloc::Layout;
@@ -15,8 +15,8 @@ use std::str::FromStr;
 macro_rules! expose_dsp {
     ($t:tt) => {
         const _: () = {
-            use crate::interop;
-            use crate::raw_bindings::FMOD_DSP_DESCRIPTION;
+            use scamble::dsp::interop;
+            use $crate::raw_bindings::FMOD_DSP_DESCRIPTION;
             use core::mem::MaybeUninit;
 
             #[allow(non_snake_case)]
@@ -47,11 +47,11 @@ macro_rules! expose_dsp_list {
         const _: () = {
             use core::mem::MaybeUninit;
             use core::ptr;
-            use crate::dsp::interop;
-            use crate::raw_bindings::FMOD_DSP_DESCRIPTION;
-            use crate::raw_bindings::FMOD_PLUGINLIST;
-            use crate::raw_bindings::FMOD_PLUGINTYPE::FMOD_PLUGINTYPE_DSP;
-            use crate::raw_bindings::FMOD_PLUGINTYPE::FMOD_PLUGINTYPE_MAX;
+            use $crate::dsp::interop;
+            use $crate::raw_bindings::FMOD_DSP_DESCRIPTION;
+            use $crate::raw_bindings::FMOD_PLUGINLIST;
+            use $crate::raw_bindings::FMOD_PLUGINTYPE::FMOD_PLUGINTYPE_DSP;
+            use $crate::raw_bindings::FMOD_PLUGINTYPE::FMOD_PLUGINTYPE_MAX;
 
             $(
                 #[allow(non_upper_case_globals)]

@@ -13,7 +13,7 @@ use scamble::raw_bindings::FMOD_DSP_FFT::FMOD_DSP_FFT_SPECTRUMDATA;
 use scamble::raw_bindings::FMOD_DSP_TYPE;
 use vizia::prelude::*;
 
-type It = scamble::effects::fantasy::Fantasy;
+type It = tcp_effects::effects::fantasy::Fantasy;
 
 #[derive(Lens)]
 struct AppModel {

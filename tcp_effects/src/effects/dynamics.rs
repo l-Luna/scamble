@@ -1,5 +1,5 @@
-use crate::dsp::interop::{Dsp, DspType};
-use crate::dsp::signal::{Signal, SignalConst, SignalMut};
+use scamble::dsp::interop::{Dsp, DspType};
+use scamble::dsp::signal::{Signal, SignalConst, SignalMut};
 use std::simd::num::SimdFloat;
 use std::simd::{StdFloat, f32x16};
 

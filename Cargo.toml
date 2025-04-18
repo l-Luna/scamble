@@ -7,12 +7,9 @@ edition = "2024"
 crate-type = ["dylib"]
 
 [workspace]
-members = ["tester"]
+members = ["tester", "tcp_effects", "cassette_player"]
 
 [dependencies]
-rand = "0.9.0"
-circular-buffer = "1.1.0"
-realfft = "3.4.0"
 hound = "3.5.1"
 
 [build-dependencies]

@@ -1,12 +1,6 @@
-#![feature(macro_metavar_expr)]
-#![feature(portable_simd)]
 #![feature(panic_payload_as_str)]
+#![feature(macro_metavar_expr)]
 #![feature(macro_metavar_expr_concat)]
-
-use effects::fantasy::Fantasy;
-use effects::noise_reduction::NoiseReduction;
-use effects::vocoder::Vocoder;
-use effects::cassette_player::CassettePlayer;
 
 #[cfg(feature = "fmod_bindings")]
 pub mod fmod;
@@ -14,9 +8,6 @@ pub mod fmod;
 pub mod simulate;
 
 pub mod dsp;
-pub mod effects;
 pub mod raw_bindings;
 pub mod result;
 pub mod data;
-
-expose_dsp_list!(NoiseReduction, Fantasy, Vocoder, CassettePlayer);

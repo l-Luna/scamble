@@ -99,7 +99,7 @@ impl<'a> SignalMut<'a> {
         self.data.fill(v);
     }
 
-    pub(crate) fn samples_mut(&mut self) -> &mut [f32] {
+    pub fn samples_mut(&mut self) -> &mut [f32] {
         self.data
     }
 }

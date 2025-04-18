@@ -1,5 +1,5 @@
-use crate::dsp::interop::{Dsp, DspType};
-use crate::dsp::signal::{Signal, SignalConst, SignalMut};
+use scamble::dsp::interop::{Dsp, DspType};
+use scamble::dsp::signal::{Signal, SignalConst, SignalMut};
 use rand::{Rng, rng};
 
 pub struct WindySynth {

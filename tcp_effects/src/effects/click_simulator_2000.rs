@@ -1,5 +1,5 @@
-use crate::dsp::interop::{Dsp, DspType, ProcessResult};
-use crate::dsp::signal::{Signal, SignalConst, SignalMut};
+use scamble::dsp::interop::{Dsp, DspType, ProcessResult};
+use scamble::dsp::signal::{Signal, SignalConst, SignalMut};
 use circular_buffer::CircularBuffer;
 use rand::{Rng, rng};
 use realfft::num_complex::Complex;

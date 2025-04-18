@@ -1,0 +1,11 @@
+[package]
+name = "cassette_player"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+scamble = { path = ".." }
+circular-buffer = "1.1.0"

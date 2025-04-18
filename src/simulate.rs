@@ -1,5 +1,5 @@
+/*
 use crate::dsp::interop;
-use crate::effects::{click_simulator_2000, windy};
 use crate::fmod;
 use crate::raw_bindings::FMOD_RESULT::FMOD_OK;
 use crate::raw_bindings::{FMOD_DEBUG_FLAGS, FMOD_DEBUG_MODE, FMOD_Debug_Initialize, FMOD_RESULT};
@@ -64,3 +64,4 @@ extern "C" fn fmod_print_callback(
     }
     FMOD_OK
 }
+*/

@@ -1,0 +1,13 @@
+[package]
+name = "tcp_effects"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+scamble = { path = ".." }
+rand = "0.9.0"
+circular-buffer = "1.1.0"
+realfft = "3.4.0"

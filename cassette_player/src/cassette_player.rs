@@ -1,7 +1,7 @@
-use crate::dsp::signal::{Signal, SignalConst, SignalMut};
-use crate::dsp::{Dsp, DspType, Parameter, ParameterType};
+use scamble::dsp::signal::{Signal, SignalConst, SignalMut};
+use scamble::dsp::{Dsp, DspType, Parameter, ParameterType};
+use scamble::dsp::decode::decode_into;
 use circular_buffer::CircularBuffer;
-use crate::dsp::decode::decode_into;
 
 #[derive(Copy, Clone)]
 struct TrailingNote {
