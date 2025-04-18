@@ -13,20 +13,23 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-13, macos-latest]
+        os: [ubuntu-latest, macos-13, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
 
     steps:
     - uses: actions/checkout@v4
-    - name: Build
-      run: cargo build --lib --verbose --release
-    #- name: Run tests
-    #  run: cargo test --verbose
+    - name: Build Cassette Player
+      run: cargo build --lib -p cassette_player --verbose --release
+    - name: Build TCP Effects
+      run: cargo build --lib -p tcp_effects --verbose --release
     - name: Upload Plugin
       uses: actions/upload-artifact@v4.6.1
       with:
         name: plugin-${{ matrix.os }}
         path: |
-          target/release/scamble.dll
-          target/release/libscamble.so
-          target/release/libscamble.dylib
+          target/release/cassette_player.dll
+          target/release/libcassette_player.so
+          target/release/libcassette_player.dylib
+          target/release/tcp_effects.dll
+          target/release/libtcp_effects.so
+          target/release/libtcp_effects.dylib
