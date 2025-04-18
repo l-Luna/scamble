@@ -1,6 +1,7 @@
 #![feature(macro_metavar_expr)]
 #![feature(portable_simd)]
 #![feature(panic_payload_as_str)]
+#![feature(macro_metavar_expr_concat)]
 
 use effects::fantasy::Fantasy;
 use effects::noise_reduction::NoiseReduction;

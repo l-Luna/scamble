@@ -2373,7 +2373,6 @@ dependencies = [
  "bindgen",
  "circular-buffer",
  "hound",
- "paste",
  "rand 0.9.0",
  "realfft",
 ]

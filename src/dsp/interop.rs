@@ -3,7 +3,8 @@ use crate::raw_bindings::FMOD_DSP_PARAMETER_DATA_TYPE::*;
 use crate::raw_bindings::FMOD_RESULT::{FMOD_ERR_DSP_DONTPROCESS, FMOD_ERR_DSP_SILENCE, FMOD_ERR_INVALID_PARAM, FMOD_ERR_PLUGIN, FMOD_OK};
 pub(crate) use crate::dsp::{Dsp, DspType, ParameterType, ProcessResult};
 use crate::dsp::signal::{SignalConst, SignalMut};
-use std::{panic, ptr};
+use std::{alloc, panic, ptr};
+use std::alloc::Layout;
 use std::ffi::{c_char, c_int, c_uint, c_void, CString};
 use std::ptr::{slice_from_raw_parts, slice_from_raw_parts_mut};
 use std::str::FromStr;
@@ -12,24 +13,21 @@ use std::str::FromStr;
 
 #[macro_export]
 macro_rules! expose_dsp {
-    ($t:ty) => {
+    ($t:tt) => {
         const _: () = {
             use crate::interop;
             use crate::raw_bindings::FMOD_DSP_DESCRIPTION;
             use core::mem::MaybeUninit;
-            use paste::paste;
 
-            paste! {
-                #[allow(non_snake_case)]
-                static mut [<$t _ DESC>]: MaybeUninit<FMOD_DSP_DESCRIPTION> = MaybeUninit::uninit();
-            }
+            #[allow(non_snake_case)]
+            static mut ${concat($t, _DESC)}: MaybeUninit<FMOD_DSP_DESCRIPTION> = MaybeUninit::uninit();
 
             #[cfg(windows)]
             #[allow(non_snake_case)]
             #[unsafe(no_mangle)]
             #[allow(static_mut_refs)]
             unsafe extern "stdcall" fn FMODGetDSPDescription() -> *const FMOD_DSP_DESCRIPTION {
-                unsafe { paste!([<$t _ DESC>]).write(interop::into_desc::<$t>()) }
+                unsafe { ${concat($t, _DESC)}.write(interop::into_desc::<$t>()) }
             }
 
             #[cfg(not(windows))]
@@ -37,7 +35,7 @@ macro_rules! expose_dsp {
             #[unsafe(no_mangle)]
             #[allow(static_mut_refs)]
             unsafe extern "C" fn FMODGetDSPDescription() -> *const FMOD_DSP_DESCRIPTION {
-                unsafe { paste!([<$t _ DESC>]).write(interop::into_desc::<$t>()) }
+                unsafe { ${concat($t, _DESC)}.write(interop::into_desc::<$t>()) }
             }
         };
     };
@@ -45,11 +43,10 @@ macro_rules! expose_dsp {
 
 #[macro_export]
 macro_rules! expose_dsp_list {
-    ($($t:ty $(,)?)*) => {
+    ($($t:ident $(,)?)*) => {
         const _: () = {
             use core::mem::MaybeUninit;
             use core::ptr;
-            use paste::paste;
             use crate::dsp::interop;
             use crate::raw_bindings::FMOD_DSP_DESCRIPTION;
             use crate::raw_bindings::FMOD_PLUGINLIST;
@@ -57,19 +54,17 @@ macro_rules! expose_dsp_list {
             use crate::raw_bindings::FMOD_PLUGINTYPE::FMOD_PLUGINTYPE_MAX;
 
             $(
-                paste!{
-                    #[allow(non_upper_case_globals)]
-                    static mut [<$t _ DESC>]: MaybeUninit<FMOD_DSP_DESCRIPTION> = MaybeUninit::uninit();
+                #[allow(non_upper_case_globals)]
+                static mut ${concat($t, _DESC)}: MaybeUninit<FMOD_DSP_DESCRIPTION> = MaybeUninit::uninit();
 
-                    #[allow(static_mut_refs)]
-                    #[allow(non_snake_case)]
-                    fn [<Write $t>]() -> *const FMOD_DSP_DESCRIPTION {
-                        unsafe { paste!([<$t _ DESC>]).write(interop::into_desc::<$t>()) }
-                    }
+                #[allow(static_mut_refs)]
+                #[allow(non_snake_case)]
+                fn ${concat(Write, $t)}() -> *const FMOD_DSP_DESCRIPTION {
+                    unsafe { ${concat($t, _DESC)}.write(interop::into_desc::<$t>()) }
                 }
             )*
 
-            static mut PLUGIN_LIST: MaybeUninit<[FMOD_PLUGINLIST; $ {count($t)} + 1]> = MaybeUninit::zeroed();
+            static mut PLUGIN_LIST: MaybeUninit<[FMOD_PLUGINLIST; ${count($t)} + 1]> = MaybeUninit::zeroed();
 
             #[cfg(windows)]
             #[allow(non_snake_case)]
@@ -77,7 +72,7 @@ macro_rules! expose_dsp_list {
             #[allow(static_mut_refs)]
             unsafe extern "stdcall" fn FMODGetPluginDescriptionList() -> *const FMOD_PLUGINLIST {
                 unsafe {
-                    PLUGIN_LIST.write([$( FMOD_PLUGINLIST { type_: FMOD_PLUGINTYPE_DSP, description: paste!([< Write $t >])() as *mut _ }, )* FMOD_PLUGINLIST{ type_: FMOD_PLUGINTYPE_MAX, description: ptr::null_mut() } ]).as_ptr()
+                    PLUGIN_LIST.write([$( FMOD_PLUGINLIST { type_: FMOD_PLUGINTYPE_DSP, description: ${concat(Write, $t)}() as *mut _ }, )* FMOD_PLUGINLIST{ type_: FMOD_PLUGINTYPE_MAX, description: ptr::null_mut() } ]).as_ptr()
                 }
             }
 
@@ -87,7 +82,7 @@ macro_rules! expose_dsp_list {
             #[allow(static_mut_refs)]
             unsafe extern "C" fn FMODGetPluginDescriptionList() -> *const FMOD_PLUGINLIST {
                 unsafe {
-                    PLUGIN_LIST.write([$( FMOD_PLUGINLIST { type_: FMOD_PLUGINTYPE_DSP, description: paste!([< Write $t >])() as *mut _ }, )* FMOD_PLUGINLIST{ type_: FMOD_PLUGINTYPE_MAX, description: ptr::null_mut() } ]).as_ptr()
+                    PLUGIN_LIST.write([$( FMOD_PLUGINLIST { type_: FMOD_PLUGINTYPE_DSP, description: ${concat(Write, $t)}() as *mut _ }, )* FMOD_PLUGINLIST{ type_: FMOD_PLUGINTYPE_MAX, description: ptr::null_mut() } ]).as_ptr()
                 }
             }
         };
@@ -289,15 +284,23 @@ pub fn with_sidechain<T>(f: impl FnOnce(Option<SignalConst>) -> T) -> T{
 }
 
 unsafe fn log_err(str: &str, s: *mut FMOD_DSP_STATE) {
+    if s.is_null() {
+        return;
+    }
     unsafe {
         let cstr = CString::from_str(str).unwrap();
-        (*(*s).functions).log.unwrap()(
-            FMOD_DEBUG_LEVEL_ERROR,
-            DBGSTR.as_ptr() as *const _,
-            -1,
-            DBGSTR.as_ptr() as *const _,
-            cstr.as_ptr(),
-        );
+        let funcs = (*s).functions;
+        if !funcs.is_null() {
+            if let Some(log) = (*funcs).log {
+                log(
+                    FMOD_DEBUG_LEVEL_ERROR,
+                    DBGSTR.as_ptr() as *const _,
+                    -1,
+                    DBGSTR.as_ptr() as *const _,
+                    cstr.as_ptr(),
+                );
+            }
+        }
     }
 }
 
@@ -312,25 +315,26 @@ unsafe fn log_err(str: &str, s: *mut FMOD_DSP_STATE) {
 }*/
 
 extern "C" fn create_callback<D: Dsp>(dsp_state: *mut FMOD_DSP_STATE) -> FMOD_RESULT {
+    unsafe { CUR_STATE = dsp_state; }
     let data = D::create();
     unsafe {
-        let mem = (*(*dsp_state).functions).alloc.unwrap()(
-            size_of::<D>() as c_uint,
-            FMOD_MEMORY_NORMAL,
-            DBGSTR.as_ptr() as *const _,
-        ) as *mut D;
+        let mem = alloc::alloc_zeroed(Layout::new::<D>()) as *mut D;
         ptr::write(mem, data);
         (*dsp_state).plugindata = mem as *mut _;
+        CUR_STATE = ptr::null_mut();
     }
     FMOD_OK
 }
 
 extern "C" fn release_callback<D: Dsp>(dsp_state: *mut FMOD_DSP_STATE) -> FMOD_RESULT {
     unsafe {
-        let x = (*dsp_state).plugindata;
-        drop(ptr::read(x as *mut D));
-        (*(*dsp_state).functions).free.unwrap()(x, FMOD_MEMORY_NORMAL, DBGSTR.as_ptr() as *const _);
-        (*dsp_state).plugindata = ptr::null_mut();
+        CUR_STATE = dsp_state;
+        let x = (*dsp_state).plugindata as *mut D;
+        drop(ptr::read(x));
+        alloc::dealloc(x as *mut u8, Layout::new::<D>());
+        //(*(*dsp_state).functions).free.unwrap()(x, FMOD_MEMORY_NORMAL, DBGSTR.as_ptr() as *const _);
+        //(*dsp_state).plugindata = ptr::null_mut();
+        CUR_STATE = ptr::null_mut();
     }
     FMOD_OK
 }
@@ -348,9 +352,7 @@ extern "C" fn reset_callback<D: Dsp>(dsp_state: *mut FMOD_DSP_STATE) -> FMOD_RES
 
         match result{
             Ok(_) => FMOD_OK,
-            Err(_) => {
-                FMOD_ERR_PLUGIN
-            }
+            Err(_) => FMOD_ERR_PLUGIN,
         }
     }
 }
@@ -435,6 +437,8 @@ extern "C" fn process_callback<D: Dsp>(
         let proc = panic::catch_unwind(|| {
             let data = &mut *((*dsp_state).plugindata as *mut D);
             if op == FMOD_DSP_PROCESS_OPERATION::FMOD_DSP_PROCESS_QUERY {
+                (*out_buffers).speakermode = FMOD_SPEAKERMODE::FMOD_SPEAKERMODE_STEREO;
+                *(*out_buffers).bufferchannelmask = 0;
                 if let Some(channels) = data.preferred_out_channels() {
                     *(*out_buffers).buffernumchannels = channels as c_int;
                 }
@@ -450,7 +454,7 @@ extern "C" fn process_callback<D: Dsp>(
                 let in_chan = (*(*in_buffers).buffernumchannels) as usize;
                 let out_chan = (*(*out_buffers).buffernumchannels) as usize;
                 let in_ptr = *(*in_buffers).buffers;
-                let in_data = if <*mut f32>::is_null(in_ptr) {
+                let in_data = if in_ptr.is_null() {
                     &[]
                 } else {
                     &*slice_from_raw_parts_mut(in_ptr, length as usize * in_chan)
