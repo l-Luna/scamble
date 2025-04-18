@@ -330,10 +330,8 @@ extern "C" fn release_callback<D: Dsp>(dsp_state: *mut FMOD_DSP_STATE) -> FMOD_R
     unsafe {
         CUR_STATE = dsp_state;
         let x = (*dsp_state).plugindata as *mut D;
-        drop(ptr::read(x));
+        ptr::drop_in_place(x);
         alloc::dealloc(x as *mut u8, Layout::new::<D>());
-        //(*(*dsp_state).functions).free.unwrap()(x, FMOD_MEMORY_NORMAL, DBGSTR.as_ptr() as *const _);
-        //(*dsp_state).plugindata = ptr::null_mut();
         CUR_STATE = ptr::null_mut();
     }
     FMOD_OK
@@ -435,10 +433,12 @@ extern "C" fn process_callback<D: Dsp>(
         let proc = panic::catch_unwind(|| {
             let data = &mut *((*dsp_state).plugindata as *mut D);
             if op == FMOD_DSP_PROCESS_OPERATION::FMOD_DSP_PROCESS_QUERY {
-                (*out_buffers).speakermode = FMOD_SPEAKERMODE::FMOD_SPEAKERMODE_STEREO;
-                *(*out_buffers).bufferchannelmask = 0;
-                if let Some(channels) = data.preferred_out_channels() {
-                    *(*out_buffers).buffernumchannels = channels as c_int;
+                if !out_buffers.is_null() {
+                    (*out_buffers).speakermode = FMOD_SPEAKERMODE::FMOD_SPEAKERMODE_STEREO;
+                    *(*out_buffers).bufferchannelmask = 0;
+                    if let Some(channels) = data.preferred_out_channels() {
+                        *(*out_buffers).buffernumchannels = channels as c_int;
+                    }
                 }
                 match D::ty() {
                     DspType::Generator => FMOD_OK,
@@ -449,13 +449,13 @@ extern "C" fn process_callback<D: Dsp>(
                     },
                 }
             } else {
-                let in_chan = (*(*in_buffers).buffernumchannels) as usize;
                 let out_chan = (*(*out_buffers).buffernumchannels) as usize;
-                let in_ptr = *(*in_buffers).buffers;
-                let in_data = if in_ptr.is_null() {
-                    &[]
+                let (in_chan, in_data) = if !in_buffers.is_null() {
+                    let in_chan = (*(*in_buffers).buffernumchannels) as usize;
+                    let in_data = &*slice_from_raw_parts_mut(*(*in_buffers).buffers, length as usize * in_chan);
+                    (in_chan, in_data)
                 } else {
-                    &*slice_from_raw_parts_mut(in_ptr, length as usize * in_chan)
+                    (0, &[] as &[f32])
                 };
                 let out_data = &mut *slice_from_raw_parts_mut(*(*out_buffers).buffers, length as usize * out_chan);
                 data.read(
