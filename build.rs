@@ -3,8 +3,8 @@ use std::{env, fs};
 use std::path::PathBuf;
 
 fn main() {
-    println!("cargo:rustc-link-search=./libs/");
-    println!("cargo:rustc-link-lib=fmod");
+    // println!("cargo:rustc-link-search=./libs/");
+    // println!("cargo:rustc-link-lib= fmod");
 
     let bindings = bindgen::Builder::default()
         .header("libs/wrapper.h")
@@ -22,10 +22,10 @@ fn main() {
         .expect("Couldn't write bindings!");
 
     // slightly hacky way to append the right link mode for windows
-    let mut st = fs::read_to_string(target).expect("Couldn't update bindings!");
+    /*let mut st = fs::read_to_string(target).expect("Couldn't update bindings!");
     st = st.replace(
         "unsafe extern \"C\" {",
         "#[cfg_attr(windows, link(name = \"fmod\", kind = \"raw-dylib\"))]\nunsafe extern \"C\" {"
     );
-    fs::write(target, st).expect("Couldn't update bindings!");
+    fs::write(target, st).expect("Couldn't update bindings!");*/
 }

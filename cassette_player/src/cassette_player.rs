@@ -1,7 +1,7 @@
-use scamble::dsp::signal::{Signal, SignalConst, SignalMut};
-use scamble::dsp::{Dsp, DspType, Parameter, ParameterType};
-use scamble::dsp::decode::decode_into;
 use circular_buffer::CircularBuffer;
+use scamble::dsp::decode::decode_into;
+use scamble::dsp::signal::{Signal, SignalConst, SignalMut};
+use scamble::dsp::{Dsp, DspType, Parameter, ParameterType, ProcessResult};
 
 #[derive(Copy, Clone)]
 struct TrailingNote {
@@ -143,6 +143,10 @@ impl Dsp for CassettePlayer {
         self.prev_note_frac = 2.;
     }
 
+    fn should_process(&mut self, _: bool, _: usize) -> ProcessResult {
+        ProcessResult::Continue
+    }
+
     fn preferred_out_channels(&self) -> Option<usize> {
         Some(2)
     }
@@ -154,7 +158,8 @@ impl Dsp for CassettePlayer {
 
         // trigger new notes when parameter changes
         if self.note_frac != self.prev_note_frac {
-            self.trailing_notes.push_back(self.note_at_pos(self.note_frac));
+            self.trailing_notes
+                .push_back(self.note_at_pos(self.note_frac));
         }
         self.prev_note_frac = self.note_frac;
 

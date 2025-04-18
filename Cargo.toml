@@ -3,9 +3,6 @@ name = "scamble"
 version = "0.1.0"
 edition = "2024"
 
-[lib]
-crate-type = ["dylib"]
-
 [workspace]
 members = ["tester", "tcp_effects", "cassette_player"]
 
@@ -16,4 +13,5 @@ hound = "3.5.1"
 bindgen = "0.71.1"
 
 [features]
+default = []
 fmod_bindings = []

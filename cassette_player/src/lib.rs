@@ -3,8 +3,8 @@
 
 use crate::cassette_player::CassettePlayer;
 
-use scamble::expose_dsp;
+use scamble::{expose_dsp, expose_dsp_list};
 
 pub mod cassette_player;
 
-expose_dsp!(CassettePlayer);
+expose_dsp_list!(CassettePlayer);

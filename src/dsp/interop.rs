@@ -379,11 +379,9 @@ extern "C" fn should_process_callback<D: Dsp>(
 
         CUR_STATE = ptr::null_mut();
 
-        match result{
+        match result {
             Ok(_) => FMOD_OK,
-            Err(_) => {
-                FMOD_ERR_PLUGIN
-            }
+            Err(_) => FMOD_ERR_PLUGIN
         }
     }
 }
