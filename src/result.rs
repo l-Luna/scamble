@@ -1,6 +1,8 @@
+//! Helpers for working with [FMOD_RESULT]s.
+
 use crate::raw_bindings::FMOD_RESULT;
 
-// operations on raw results
+/// Returns a simple description of an FMOD error code.
 pub fn error_string_raw(result: FMOD_RESULT) -> &'static str {
     match result {
         FMOD_RESULT::FMOD_OK => "No errors.",
@@ -200,30 +202,5 @@ pub fn error_string_raw(result: FMOD_RESULT) -> &'static str {
         }
         FMOD_RESULT::FMOD_ERR_TOOMANYSAMPLES => "The length provided exceeds the allowable limit.",
         _ => "Unknown error.",
-    }
-}
-
-// wrapped-up errors - most functions should return FmodResult
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub struct FmodError(pub FMOD_RESULT);
-
-pub type FmodResult<T> = Result<T, FmodError>;
-
-impl FmodError {
-    pub fn error_string(self) -> &'static str {
-        error_string_raw(self.0)
-    }
-}
-
-pub trait FmResultTrait<T> {
-    fn fm_unwrap(self) -> T;
-}
-
-impl<T> FmResultTrait<T> for FmodResult<T> {
-    fn fm_unwrap(self) -> T {
-        match self {
-            Ok(x) => x,
-            Err(e) => panic!("FMOD Error: {}", e.error_string()),
-        }
     }
 }

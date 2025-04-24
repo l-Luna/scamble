@@ -1,13 +1,19 @@
+//! Types for handling interleaved multi-channel sample buffers.
+
 /// A sample buffer with an associated channel count.
 pub trait Signal {
+    /// Gets the number of channels of this buffer.
     fn channels(&self) -> usize;
 
+    /// Gets the underlying sample data of this buffer.
     fn samples(&self) -> &[f32];
 
+    /// Gets the number of full samples in this buffer.
     fn length(&self) -> usize {
         self.samples().len() / self.channels()
     }
 
+    /// Provides a mono view of this buffer, downmixing as necessary.
     fn read_mono(&self) -> impl Iterator<Item = f32> {
         let ch = self.channels() as f32;
         self.samples()
@@ -15,7 +21,8 @@ pub trait Signal {
             .map(move |slc| slc.iter().sum::<f32>() / ch)
     }
 
-    // can't automatically decide channel layout... pick sensible default & provide override?
+    // TODO: get channel layout from FMOD - panning is potentially heavy?
+    /// Provides a stereo view of this buffer, down- or upmixing as necessary.
     fn read_stereo(&self) -> (impl Iterator<Item = f32>, impl Iterator<Item = f32>) {
         (
             self.samples().chunks_exact(self.channels()).map(|slc| {
@@ -89,16 +96,19 @@ impl<'a> SignalMut<'a> {
         SignalMut { data, channels }
     }
 
+    /// Writes a sample to the buffer across all channels.
     pub fn write_sample(&mut self, n: usize, v: f32) {
         for ch in 0..self.channels {
             self.data[n * self.channels + ch] = v;
         }
     }
 
+    /// Fills the channel with a constant value.
     pub fn fill(&mut self, v: f32) {
         self.data.fill(v);
     }
 
+    /// Gets the underlying sample data of this buffer mutably.
     pub fn samples_mut(&mut self) -> &mut [f32] {
         self.data
     }

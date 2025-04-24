@@ -1,4 +1,4 @@
-use scamble::dsp::interop::{Dsp, DspType, ProcessResult};
+use scamble::dsp::{Dsp, DspType, ProcessResult};
 use scamble::dsp::signal::{Signal, SignalConst, SignalMut};
 use circular_buffer::CircularBuffer;
 use rand::{Rng, rng};

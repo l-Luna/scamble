@@ -1,4 +1,4 @@
-use scamble::dsp::interop::{Dsp, DspType};
+use scamble::dsp::{Dsp, DspType};
 use scamble::dsp::signal::{Signal, SignalConst, SignalMut};
 use rand::{Rng, rng};
 

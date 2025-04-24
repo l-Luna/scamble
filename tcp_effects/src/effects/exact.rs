@@ -1,5 +1,5 @@
 use scamble::dsp::Parameter;
-use scamble::dsp::interop::{Dsp, DspType, ParameterType, with_sidechain};
+use scamble::dsp::{Dsp, DspType, ParameterType, interop::with_sidechain};
 use scamble::dsp::signal::{Signal, SignalConst, SignalMut};
 
 pub struct ExactOut {

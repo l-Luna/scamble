@@ -1,9 +1,9 @@
-use scamble::dsp::interop::{Dsp, DspType};
+use scamble::dsp::{Dsp, DspType};
 use scamble::dsp::signal::{Signal, SignalConst, SignalMut};
 use std::simd::num::SimdFloat;
 use std::simd::{StdFloat, f32x16};
 
-pub struct LocalDynamics {}
+pub struct LocalDynamics;
 
 impl Dsp for LocalDynamics {
     fn name() -> &'static str {
@@ -19,7 +19,7 @@ impl Dsp for LocalDynamics {
     }
 
     fn create() -> Self {
-        LocalDynamics {}
+        LocalDynamics
     }
 
     fn read(&mut self, input: SignalConst, mut output: SignalMut) {

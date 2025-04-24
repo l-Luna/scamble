@@ -1,5 +1,5 @@
 use scamble::dsp::Parameter;
-use scamble::dsp::interop::{Dsp, DspType, ParameterType, ProcessResult};
+use scamble::dsp::{Dsp, DspType, ParameterType, ProcessResult};
 use scamble::dsp::signal::{Signal, SignalConst, SignalMut};
 use circular_buffer::CircularBuffer;
 use realfft::num_complex::Complex;

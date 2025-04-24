@@ -1,7 +1,10 @@
+//! Wraps `scamble`'s DSP API into FMOD's API. Use `expose_dsp` or `expose_dsp_list` to create a
+//! standalone plugin binary, or use [into_desc] to pass a value directly to FMOD Core's API.
+
 use crate::raw_bindings::*;
 use crate::raw_bindings::FMOD_DSP_PARAMETER_DATA_TYPE::*;
 use crate::raw_bindings::FMOD_RESULT::{FMOD_ERR_DSP_DONTPROCESS, FMOD_ERR_DSP_SILENCE, FMOD_ERR_INVALID_PARAM, FMOD_ERR_PLUGIN, FMOD_OK};
-pub use crate::dsp::{Dsp, DspType, ParameterType, ProcessResult};
+use crate::dsp::{Dsp, DspType, ParameterType, ProcessResult};
 use crate::dsp::signal::{SignalConst, SignalMut};
 use std::{alloc, panic, ptr};
 use std::alloc::Layout;
@@ -11,6 +14,7 @@ use std::str::FromStr;
 
 // wrapping DSPs into FMOD's format
 
+/// Expose a DSP type to FMOD to be loaded as a dynamic library.
 #[macro_export]
 macro_rules! expose_dsp {
     ($t:tt) => {
@@ -41,6 +45,7 @@ macro_rules! expose_dsp {
     };
 }
 
+/// Expose multiple DSP types to FMOD to be loaded as a dynamic library.
 #[macro_export]
 macro_rules! expose_dsp_list {
     ($($t:ident $(,)?)*) => {
@@ -89,10 +94,9 @@ macro_rules! expose_dsp_list {
     };
 }
 
-pub(crate) use expose_dsp;
-pub(crate) use expose_dsp_list;
-
+/// Convert a DSP type into an FMOD DSP description, to be passed to the FMOD Core API.
 pub fn into_desc<D: Dsp>() -> FMOD_DSP_DESCRIPTION {
+    // TODO: set the hook in FMODGetPluginDescription[List] so it only applies for standalones
     panic::set_hook(Box::new(|it| {
         let mut desc = String::new();
         desc.push_str("Panic");
@@ -272,6 +276,8 @@ static DBGSTR: &'static str = "Rust DSP\0";
 static mut CUR_STATE: *mut FMOD_DSP_STATE = ptr::null_mut();
 static mut IN_LENGTH: usize = 0;
 
+/// Read a sidechain input from a DSP. Should only be called from [Dsp::read], only if a
+/// [ParameterType::Sidechain] is present and enabled, otherwise [None] will always be provided.
 pub fn with_sidechain<T>(f: impl FnOnce(Option<SignalConst>) -> T) -> T{
     let cur_state = unsafe { CUR_STATE };
     if cur_state.is_null() {

@@ -1,3 +1,5 @@
+//! Utilities for decoding samples from a plugin, for data inputs.
+
 use hound::{SampleFormat, WavReader};
 
 /// Decode a data buffer into mono samples, guessing the correct format.
