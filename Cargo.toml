@@ -4,14 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [workspace]
-members = ["tester", "tcp_effects", "cassette_player"]
+members = ["tcp_effects", "cassette_player"]
 
 [dependencies]
 hound = "3.5.1"
 
 [build-dependencies]
 bindgen = "0.71.1"
-
-[features]
-default = []
-fmod_bindings = []
