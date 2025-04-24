@@ -5,6 +5,7 @@ edition = "2024"
 license = "MIT"
 description = "Library for building FMOD DSPs"
 repository = "https://github.com/l-Luna/scamble"
+documentation = "https://docs.rs/scamble/latest/scamble/"
 keywords = ["fmod", "dsp"]
 categories = ["multimedia::audio"]
 
