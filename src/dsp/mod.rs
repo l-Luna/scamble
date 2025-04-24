@@ -1,9 +1,9 @@
 use crate::data::*;
 use crate::dsp::signal::*;
 
+pub mod decode;
 pub mod interop;
 pub mod signal;
-pub mod decode;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum DspType {
@@ -62,32 +62,32 @@ pub enum ParameterType<Dsp: ?Sized> {
     },
     DynamicResponse {
         setter: fn(DynamicResponseData, &mut Dsp),
-        getter: fn(&Dsp) -> DynamicResponseData
+        getter: fn(&Dsp) -> DynamicResponseData,
     },
     /// Read by FMOD Studio to decide when to virtualize sounds.
     OverallGain {
         setter: fn(OverallGainData, &mut Dsp),
-        getter: fn(&Dsp) -> OverallGainData
+        getter: fn(&Dsp) -> OverallGainData,
     },
     /// Set by FMOD Studio with the player's position and attributes.
     ListenerAttributes {
         setter: fn(ListenerAttributesData, &mut Dsp),
-        getter: fn(&Dsp) -> ListenerAttributesData
+        getter: fn(&Dsp) -> ListenerAttributesData,
     },
     /// Set by FMOD Studio with all player's positions and attributes, if there are multiple.
     ListenerAttributesList {
         setter: fn(ListenerAttributesListData, &mut Dsp),
-        getter: fn(&Dsp) -> ListenerAttributesListData
+        getter: fn(&Dsp) -> ListenerAttributesListData,
     },
     /// Set by FMOD Studio to the min/max range of the event containing this DSP.
     AttenuationRange {
         setter: fn(AttenuationRangeData, &mut Dsp),
-        getter: fn(&Dsp) -> AttenuationRangeData
+        getter: fn(&Dsp) -> AttenuationRangeData,
     },
     /// Set to provide access to FFT data to games.
     Fft {
         setter: fn(FftData, &mut Dsp),
-        getter: fn(&Dsp) -> FftData
+        getter: fn(&Dsp) -> FftData,
     },
 }
 
@@ -121,4 +121,98 @@ pub trait Dsp {
     }
 
     fn read(&mut self, input: SignalConst, output: SignalMut);
+}
+
+impl<T: ?Sized> Parameter<T> {
+    pub const fn new(name: &'static str, ty: ParameterType<T>) -> Self {
+        Self {
+            ty,
+            name,
+            unit: "",
+            desc: "",
+        }
+    }
+
+    pub const fn with_unit(name: &'static str, unit: &'static str, ty: ParameterType<T>) -> Self {
+        Self {
+            ty,
+            name,
+            unit,
+            desc: "",
+        }
+    }
+}
+
+// float_param!(note, range: 0.0..1.0, default: 0.0)
+#[macro_export]
+macro_rules! float_param {
+    ($name:ident $(: $t:ty)?, range: $min:literal..$max:literal, default: $default:literal) => {
+        ParameterType::Float {
+            min: $min,
+            max: $max,
+            default: $default,
+            setter: |value, dsp| dsp.$name = value $(as $t)?,
+            getter: |dsp| dsp.$name as f32
+        }
+    }
+}
+
+// int_param!(value: u8, range: 0..24, default: 1)
+#[macro_export]
+macro_rules! int_param {
+    ($name:ident $(: $t:ty)?, range: $min:literal..$max:literal, default: $default:literal) => {
+        ParameterType::Int {
+            min: $min,
+            max: $max,
+            default: $default,
+            max_is_inf: false,
+            names: None,
+            setter: |value, dsp| dsp.$name = value $(as $t)?,
+            getter: |dsp| dsp.$name as i32
+        }
+    }
+}
+
+// bool_param!(_async, default: false)
+#[macro_export]
+macro_rules! bool_param {
+    ($name:ident, default: $default:literal) => {
+        ParameterType::Bool {
+            default: $default,
+            names: None,
+            setter: |value, dsp| dsp.$name = value,
+            getter: |dsp| dsp.$name,
+        }
+    };
+}
+
+// enum_param!(voice_mode: VoiceMode, options: [Sum, Average, Solo], default: Solo)
+#[macro_export]
+macro_rules! enum_param {
+    ($name:ident: $t:ty, options: [$($opt:ident $(,)?)*], default: $default:ident) => {
+        ParameterType::Int {
+            min: 0,
+            max: ${count($opt)} - 1,
+            default: {
+                // aid autocomplete/deref by claiming that it's a variant of $t
+                let _: $t = <$t>::$default;
+                // ...but match by name in the list
+                [$(stringify!($opt),)*].iter().position(|h| *h == stringify!($default)).unwrap() as i32
+            },
+            max_is_inf: false,
+            names: Some(vec![$(stringify!($opt),)*]),
+            setter: |value, dsp| dsp.$name = match value {
+                $(
+                    ${index()} => <$t>::$opt,
+                )*
+                _ => panic!(concat!("Unknown variant {} for field ", stringify!($name)), value)
+            },
+            getter: |dsp| match dsp.$name {
+                $(
+                    <$t>::$opt => ${index()},
+                )*
+                _ => panic!()
+            }
+        }
+    }
 }
